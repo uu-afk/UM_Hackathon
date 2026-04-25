@@ -8,6 +8,7 @@ from datetime import datetime
 import os
 import json
 import requests
+import re
 
 load_dotenv()
 
@@ -105,6 +106,7 @@ class WorkflowResponse(BaseModel):
     current_stage: str
     missing_information: List[str]
     next_action: str
+    refund_case_id: Optional[str] = None
     assigned_agents: List[str] = Field(default_factory=list)
     agent_tasks: List[Dict[str, Any]] = Field(default_factory=list)
     agent_task_summary: Dict[str, Any] = Field(default_factory=dict)
@@ -322,7 +324,7 @@ def fallback_response(error_message: str) -> Dict[str, Any]:
         "missing_information": [],
         "next_action": "manual_review_required",
         "structured_output": {
-            "summary": "The refund system could not process the request correctly.",
+            "summary": "The refund workflow engine could not complete AI reasoning for this request.",
             "refund_details": {
                 "order_id": "unknown",
                 "customer_name": "unknown",
@@ -344,7 +346,7 @@ def fallback_response(error_message: str) -> Dict[str, Any]:
                 "Can you provide your order ID, refund reason, product name, and contact email or phone number?"
             ],
             "recommended_tools_or_apis": [],
-            "final_message": "Sorry, I could not understand the refund request properly. Please try again with your order details.",
+            "final_message": "Sorry, the refund workflow engine could not process this request right now. Please try again, or ask support to review it manually.",
             "error": error_message
         }
     }
@@ -427,7 +429,11 @@ def find_missing_required_fields(glm_result: Dict[str, Any]) -> List[str]:
     if isinstance(existing_missing, list):
         for item in existing_missing:
             normalized = str(item).strip()
-            if normalized and normalized not in missing_fields:
+            if (
+                normalized in REQUIRED_REFUND_FIELDS
+                and normalized not in missing_fields
+                and not is_known_value(refund_details.get(normalized))
+            ):
                 missing_fields.append(normalized)
 
     return missing_fields
@@ -545,6 +551,142 @@ def get_workflow_verification(workflow: Dict[str, Any]) -> Dict[str, Any]:
     return verify_refund_against_order_db(refund_details)
 
 
+def build_compact_workflow_context(workflow: Dict[str, Any]) -> Dict[str, Any]:
+    structured_output = workflow.get("structured_output", {})
+
+    return {
+        "workflow_id": workflow.get("workflow_id"),
+        "status": workflow.get("status"),
+        "intent": workflow.get("intent"),
+        "current_stage": workflow.get("current_stage"),
+        "missing_information": workflow.get("missing_information", []),
+        "next_action": workflow.get("next_action"),
+        "summary": structured_output.get("summary", ""),
+        "refund_details": structured_output.get("refund_details", {}),
+        "eligibility_assessment": structured_output.get("eligibility_assessment", {}),
+        "last_customer_message": workflow.get("history", [{}])[-1].get("content", "")
+    }
+
+
+def extract_refund_details_from_text(refund_details: Dict[str, Any], text: str) -> Dict[str, Any]:
+    answer_text = text.strip()
+    answer_lower = answer_text.lower()
+
+    email_match = re.search(r"[\w.\-+]+@[\w.\-]+\.\w+", answer_text)
+    if email_match:
+        refund_details["customer_contact"] = email_match.group(0)
+
+    order_match = re.search(r"\bORD\d+\b", answer_text, re.IGNORECASE)
+    if order_match:
+        refund_details["order_id"] = order_match.group(0).upper()
+
+    for order_record in mock_order_db.values():
+        product = str(order_record.get("product_or_service", ""))
+        if product and product.lower() in answer_lower:
+            refund_details["product_or_service"] = product
+            break
+
+    if not is_known_value(refund_details.get("product_or_service")):
+        product_match = re.search(
+            r"(?:product|item)\s+(?:was|is)\s+(.+?)(?:\s+and\s+my\s+email|\s+and\s+my\s+phone|\.|$)",
+            answer_text,
+            re.IGNORECASE
+        )
+        if product_match:
+            refund_details["product_or_service"] = product_match.group(1).strip()
+
+    name_match = re.search(r"(?:my name is|i am|i'm)\s+([A-Za-z][A-Za-z\s'.-]{1,60})", answer_text, re.IGNORECASE)
+    if name_match:
+        refund_details["customer_name"] = name_match.group(1).strip().rstrip(".")
+
+    reason_map = {
+        "wrong item": "wrong_item_received",
+        "received the wrong": "wrong_item_received",
+        "damaged": "damaged_or_defective_item",
+        "defective": "damaged_or_defective_item",
+        "charged twice": "duplicate_payment",
+        "duplicate payment": "duplicate_payment"
+    }
+    for phrase, reason in reason_map.items():
+        if phrase in answer_lower:
+            refund_details["refund_reason"] = reason
+            break
+
+    if "card" in answer_lower:
+        refund_details["payment_method"] = "card"
+
+    return refund_details
+
+
+def recover_initial_request_without_glm(user_input: str) -> Dict[str, Any]:
+    refund_details = {
+        "order_id": "unknown",
+        "customer_name": "unknown",
+        "customer_contact": "unknown",
+        "product_or_service": "unknown",
+        "refund_reason": "unknown",
+        "purchase_date": "unknown",
+        "payment_method": "unknown",
+        "refund_amount": "unknown",
+        "currency": "unknown"
+    }
+    extract_refund_details_from_text(refund_details, user_input)
+
+    recovered_result = {
+        "intent": "request_refund",
+        "confidence": 0.55,
+        "workflow_stage": "checking_refund_eligibility",
+        "missing_information": [],
+        "next_action": "validate_refund_request",
+        "structured_output": {
+            "summary": "Recovered refund workflow from customer input after AI reasoning failed.",
+            "refund_details": refund_details,
+            "eligibility_assessment": {
+                "is_likely_eligible": False,
+                "reason": "Backend recovered enough details to run prototype verification.",
+                "policy_flags": ["glm_recovery_mode"]
+            },
+            "tasks": ["Verify recovered refund details against the prototype order database."],
+            "agent_tasks": [],
+            "questions_to_user": [],
+            "recommended_tools_or_apis": ["mock_order_db"],
+            "final_message": "I recovered the refund details and will verify the order now."
+        }
+    }
+
+    recovered_result = enforce_refund_validation_rules(recovered_result)
+    if not recovered_result.get("missing_information"):
+        recovered_result["workflow_stage"] = "checking_refund_eligibility"
+        recovered_result["next_action"] = "validate_refund_request"
+
+    return recovered_result
+
+
+def recover_follow_up_without_glm(workflow: Dict[str, Any], answer: str) -> Dict[str, Any]:
+    structured_output = json.loads(json.dumps(workflow.get("structured_output", {})))
+    refund_details = structured_output.setdefault("refund_details", {})
+    extract_refund_details_from_text(refund_details, answer)
+
+    recovered_result = {
+        "intent": workflow.get("intent", "request_refund"),
+        "confidence": workflow.get("confidence", 0.55),
+        "workflow_stage": workflow.get("current_stage", "collecting_information"),
+        "missing_information": workflow.get("missing_information", []),
+        "next_action": "validate_refund_request",
+        "structured_output": structured_output
+    }
+
+    recovered_result = enforce_refund_validation_rules(recovered_result)
+    if not recovered_result.get("missing_information"):
+        recovered_result["workflow_stage"] = "checking_refund_eligibility"
+        recovered_result["next_action"] = "validate_refund_request"
+        recovered_result["structured_output"]["final_message"] = (
+            "Thanks. I have updated the refund details and will verify the order now."
+        )
+
+    return recovered_result
+
+
 def enforce_refund_validation_rules(glm_result: Dict[str, Any]) -> Dict[str, Any]:
     """Backend safety net so GLM cannot accidentally approve incomplete requests."""
     if glm_result.get("workflow_stage") == "failed":
@@ -559,6 +701,8 @@ def enforce_refund_validation_rules(glm_result: Dict[str, Any]) -> Dict[str, Any
     }
 
     missing_fields = find_missing_required_fields(glm_result)
+    glm_result["missing_information"] = missing_fields
+
     if missing_fields and glm_result.get("next_action") in protected_actions:
         request_missing_refund_info(glm_result, missing_fields)
         return glm_result
@@ -682,7 +826,11 @@ def action_create_refund_case(workflow: Dict[str, Any]) -> Dict[str, Any]:
 def action_validate_refund_request(workflow: Dict[str, Any]) -> Dict[str, Any]:
     refund_details = workflow["structured_output"].get("refund_details", {})
     eligibility = workflow["structured_output"].get("eligibility_assessment", {})
-    missing_fields = workflow.get("missing_information", [])
+    missing_fields = [
+        field for field in workflow.get("missing_information", [])
+        if field in REQUIRED_REFUND_FIELDS
+    ]
+    workflow["missing_information"] = missing_fields
     policy_flags = eligibility.get("policy_flags", [])
     verification_result = get_workflow_verification(workflow)
 
@@ -1160,6 +1308,7 @@ def create_workflow_object(
         "current_stage": glm_result["workflow_stage"],
         "missing_information": glm_result["missing_information"],
         "next_action": glm_result["next_action"],
+        "refund_case_id": None,
         "assigned_agents": [],
         "agent_tasks": [],
         "agent_task_summary": {},
@@ -1235,6 +1384,9 @@ Remember:
 
     glm_result = enforce_refund_validation_rules(call_glm(prompt))
 
+    if glm_result.get("workflow_stage") == "failed":
+        glm_result = recover_initial_request_without_glm(request.user_input)
+
     workflow_data = create_workflow_object(
         workflow_id=workflow_id,
         user_input=request.user_input,
@@ -1259,7 +1411,7 @@ def continue_refund_workflow(request: FollowUpRequest):
 
     now = datetime.utcnow().isoformat()
 
-    previous_context = json.dumps(workflow, indent=2)
+    previous_context = json.dumps(build_compact_workflow_context(workflow), indent=2)
 
     prompt = f"""
 This is an existing customer refund workflow.
@@ -1284,6 +1436,9 @@ Important:
 """
 
     glm_result = enforce_refund_validation_rules(call_glm(prompt))
+
+    if glm_result.get("workflow_stage") == "failed":
+        glm_result = recover_follow_up_without_glm(workflow, request.answer)
 
     workflow.update({
         "status": determine_status(glm_result),
@@ -1389,9 +1544,8 @@ def execute_refund_workflow(workflow_id: str):
     workflow_db[workflow_id] = workflow
 
     return {
-        "workflow_id": workflow_id,
+        **workflow,
         "executed_at": now,
-        "status": "completed_prototype",
         "mapped_action": execution_action,
         "message": "Refund workflow approved in prototype mode. No real refund payment was processed."
     }

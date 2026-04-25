@@ -806,9 +806,8 @@ def execute_workflow(workflow_id: str):
     workflow_db[workflow_id] = workflow
 
     return {
-        "workflow_id": workflow_id,
+        **workflow,
         "executed_at": now,
-        "status": "completed",
         "mapped_action": execution_action,
         "message": "Refund workflow executed successfully in prototype mode."
     }

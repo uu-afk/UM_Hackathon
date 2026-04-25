@@ -741,41 +741,115 @@
     .admin-log {
       max-height: 620px;
       overflow: auto;
-      background: #0f172a;
-      color: #e2e8f0;
+      background: #f8fafc;
+      color: #334155;
       border-radius: var(--radius-md);
       padding: 12px;
-      border: 1px solid rgba(148, 163, 184, 0.28);
+      border: 1px solid var(--line);
     }
 
     .admin-log details {
-      color: #e2e8f0;
+      color: #334155;
     }
 
     .admin-log summary {
       cursor: pointer;
       font-weight: 800;
+      color: #1e3a8a;
     }
 
     .admin-log .info-card {
-      background: rgba(255, 255, 255, 0.06);
-      border-color: rgba(148, 163, 184, 0.24);
+      background: #ffffff;
+      border-color: var(--line);
     }
 
     .admin-log .info-card span,
     .admin-log .small {
-      color: #94a3b8;
+      color: #64748b;
     }
 
     .admin-log .info-card strong,
     .admin-log strong {
-      color: #f8fafc;
+      color: #0f172a;
     }
 
     .admin-log pre {
-      color: #dbeafe;
+      color: #475569;
+      background: #eef2ff;
+      border: 1px solid #dbeafe;
+      border-radius: 12px;
+      padding: 12px;
       white-space: pre-wrap;
       word-break: break-word;
+    }
+
+    .audit-entry {
+      background: #ffffff;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      margin-bottom: 12px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .audit-entry:last-child {
+      margin-bottom: 0;
+    }
+
+    .audit-topline {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .audit-title {
+      margin: 0;
+      color: #0f172a;
+      font-size: 15px;
+    }
+
+    .audit-time {
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .audit-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .audit-pill {
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 9px;
+    }
+
+    .audit-pill span {
+      display: block;
+      color: #64748b;
+      font-size: 10px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 3px;
+    }
+
+    .audit-pill strong {
+      color: #0f172a;
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    .audit-message {
+      margin: 0;
+      color: #475569;
+      line-height: 1.5;
     }
 
     @media (max-width: 1050px) {
@@ -806,7 +880,8 @@
       }
 
       .metric-grid,
-      .info-grid {
+      .info-grid,
+      .audit-grid {
         grid-template-columns: 1fr;
       }
 
@@ -1011,7 +1086,7 @@
 
         <div class="panel-body">
           <div id="adminLog" class="admin-log">
-            <p class="small" style="margin: 0;">Backend workflow details will appear here after a request.</p>
+            <p data-empty-admin-log class="small" style="margin: 0;">Audit events will appear here after a request.</p>
           </div>
         </div>
       </div>
@@ -1186,10 +1261,10 @@
     function getRefundCaseId(data) {
       const mapped = data?.mapped_action || {};
       return mapped.refund_case?.refund_case_id ||
+        mapped.validation_result?.created_case?.refund_case_id ||
         mapped.approval_result?.refund_case_id ||
         mapped.rejection_result?.refund_case_id ||
         data?.refund_case_id ||
-        mapped.manual_review?.review_id ||
         "Not created yet";
     }
 
@@ -1198,8 +1273,9 @@
       const details = output.refund_details || {};
       const mapped = data?.mapped_action || {};
       const estimate = mapped.refund_estimate || {};
-      const amount = estimate.estimated_refund_amount || details.refund_amount;
-      const currency = estimate.currency || details.currency || "";
+      const verifiedOrder = mapped.validation_result?.verification_result?.order_record || {};
+      const amount = estimate.estimated_refund_amount || details.refund_amount || verifiedOrder.amount;
+      const currency = estimate.currency || details.currency || verifiedOrder.currency || "";
 
       if (!isKnown(amount)) return "Not confirmed yet";
       return `${amount} ${isKnown(currency) ? currency : ""}`.trim();
@@ -1312,50 +1388,79 @@
       return [];
     }
 
-    function renderAdminDetails(data, title = "Admin Log") {
-      const output = data.structured_output || {};
-      const mapped = data.mapped_action || {};
-
-      let html = `
-        <details class="raw-json-toggle" open>
-          <summary>${escapeHtml(title)}</summary>
-          <div style="padding: 14px; display: grid; gap: 12px;">
-            <div class="info-grid">
-              <div class="info-card">
-                <span>Intent</span>
-                <strong>${escapeHtml(data.intent || "unknown")}</strong>
-              </div>
-              <div class="info-card">
-                <span>Workflow Stage</span>
-                <strong>${escapeHtml(data.current_stage || "unknown")}</strong>
-              </div>
-              <div class="info-card">
-                <span>Next Action</span>
-                <strong>${escapeHtml(data.next_action || "unknown")}</strong>
-              </div>
-            </div>
-      `;
-
-      html += renderRefundDetails(output.refund_details);
-      html += renderEligibility(output.eligibility_assessment);
-      html += renderList("Developer Tasks", output.tasks || []);
-      html += renderList("Recommended Tools / APIs", output.recommended_tools_or_apis || []);
-      html += renderMappedAction(mapped);
-      html += `
-            <details>
-              <summary>Raw Backend JSON</summary>
-              <pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
-            </details>
-          </div>
-        </details>
-      `;
-      return html;
+    function getAuditCaseId(data) {
+      const mapped = data?.mapped_action || {};
+      return getRefundCaseId(data) ||
+        mapped.validation_result?.created_case?.refund_case_id ||
+        "—";
     }
 
-    function updateAdminLog(data, title = "Workflow Admin Log") {
+    function getAuditMessage(data) {
+      const mapped = data?.mapped_action || {};
+      return data?.message ||
+        mapped.message ||
+        mapped.validation_result?.reason ||
+        mapped.approval_result?.message ||
+        data?.structured_output?.final_message ||
+        data?.structured_output?.summary ||
+        "No message provided.";
+    }
+
+    function renderAuditEntry(data, title = "Workflow Event") {
+      const mapped = data?.mapped_action || {};
+      const output = data?.structured_output || {};
+      const actionName = mapped.action_name || data?.next_action || "—";
+      const caseId = getAuditCaseId(data);
+      const workflowLabel = data?.workflow_id ? data.workflow_id.slice(0, 8) + "..." : "—";
+      const rawId = `raw-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const summaryHtml = data?.summary_html ||
+        (output.summary ? `<p class="small"><strong>Summary:</strong> ${escapeHtml(output.summary)}</p>` : "");
+
+      return `
+        <article class="audit-entry">
+          <div class="audit-topline">
+            <h3 class="audit-title">${escapeHtml(title)}</h3>
+            <span class="audit-time">${escapeHtml(getTime())}</span>
+          </div>
+
+          <div class="audit-grid">
+            <div class="audit-pill">
+              <span>Status</span>
+              <strong>${escapeHtml(friendlyStatus(data?.status || "unknown"))}</strong>
+            </div>
+            <div class="audit-pill">
+              <span>Workflow</span>
+              <strong>${escapeHtml(workflowLabel)}</strong>
+            </div>
+            <div class="audit-pill">
+              <span>Case</span>
+              <strong>${escapeHtml(caseId)}</strong>
+            </div>
+            <div class="audit-pill">
+              <span>Action</span>
+              <strong>${escapeHtml(actionName)}</strong>
+            </div>
+          </div>
+
+          <p class="audit-message">${escapeHtml(getAuditMessage(data))}</p>
+          ${summaryHtml}
+          ${mapped.validation_result?.validation_status ? `<p class="small"><strong>Verification:</strong> ${escapeHtml(mapped.validation_result.validation_status)}</p>` : ""}
+          ${Array.isArray(data?.assigned_agents) && data.assigned_agents.length ? `<p class="small"><strong>Agents:</strong> ${escapeHtml(data.assigned_agents.join(", "))}</p>` : ""}
+
+          <details class="raw-json-toggle" id="${rawId}">
+            <summary>Raw JSON</summary>
+            <pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+          </details>
+        </article>
+      `;
+    }
+
+    function addAdminAuditEntry(data, title = "Workflow Event") {
       const adminLog = document.getElementById("adminLog");
       if (!adminLog) return;
-      adminLog.innerHTML = renderAdminDetails(data, title);
+      const placeholder = adminLog.querySelector("[data-empty-admin-log]");
+      if (placeholder) placeholder.remove();
+      adminLog.insertAdjacentHTML("afterbegin", renderAuditEntry(data, title));
     }
 
     function renderList(title, items, icon = "•") {
@@ -1534,7 +1639,7 @@
     function renderWorkflow(data) {
       latestResponse = data;
       updateDashboard(data);
-      updateAdminLog(data);
+      addAdminAuditEntry(data, "Workflow Updated");
 
       const output = data.structured_output || {};
       const mapped = data.mapped_action || {};
@@ -1733,7 +1838,7 @@
 
         renderStages("completed");
         setPill("sideStatus", data.status || "completed");
-        updateAdminLog(data, "Prototype Execution Admin Log");
+        addAdminAuditEntry(data, "Prototype Approval Executed");
 
         let html = `
           <div class="ai-summary">
@@ -1781,12 +1886,18 @@
         }
 
         setPill("connectionStatus", "active", "Backend connected");
-        document.getElementById("adminLog").innerHTML = `
-          <details class="raw-json-toggle" open>
-            <summary>Backend Health Admin Log</summary>
-            <pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
-          </details>
-        `;
+        addAdminAuditEntry({
+          status: data.status || "healthy",
+          next_action: "health_check",
+          message: `Backend connected. Model: ${data.glm_model || "unknown"}. Workflows: ${data.workflow_count ?? 0}. Refund cases: ${data.refund_case_count ?? 0}.`,
+          structured_output: {
+            summary: "Backend health check completed successfully."
+          },
+          mapped_action: {
+            action_name: "health_check"
+          },
+          raw_health: data
+        }, "Backend Health Check");
         showAdminView();
         showToast("Backend connected. Health details opened in Admin View.");
       } catch (error) {
@@ -1848,15 +1959,19 @@
           return;
         }
 
-        document.getElementById("adminLog").innerHTML = `
-          <details class="raw-json-toggle" open>
-            <summary>Refund Cases Admin Log</summary>
-            <pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
-          </details>
-          <div style="margin-top: 14px;">
-            ${renderCasesTable(data)}
-          </div>
-        `;
+        addAdminAuditEntry({
+          status: "active",
+          next_action: "list_refund_cases",
+          message: `Loaded ${data.total ?? 0} refund case${data.total === 1 ? "" : "s"} from the backend.`,
+          structured_output: {
+            summary: "Refund cases retrieved from backend."
+          },
+          summary_html: renderCasesTable(data),
+          mapped_action: {
+            action_name: "list_refund_cases"
+          },
+          raw_cases: data
+        }, "Refund Cases Loaded");
         showAdminView();
       } catch (error) {
         addMessage("Connection Error", "Cannot connect to backend.", "error");
@@ -1901,7 +2016,7 @@
       document.getElementById("metricIntent").textContent = "—";
       document.getElementById("metricStage").textContent = "—";
       document.getElementById("metricAction").textContent = "—";
-      document.getElementById("adminLog").innerHTML = '<p class="small" style="margin: 0;">Backend workflow details will appear here after a request.</p>';
+      document.getElementById("adminLog").innerHTML = '<p data-empty-admin-log class="small" style="margin: 0;">Audit events will appear here after a request.</p>';
 
       showCustomerView();
       renderStages("received");

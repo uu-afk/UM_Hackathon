@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from typing import List, Dict, Any, Optional
 from uuid import uuid4
@@ -16,9 +16,9 @@ ZAI_API_URL = os.getenv("ZAI_API_URL", "https://api.z.ai/api/paas/v4/chat/comple
 ZAI_MODEL = os.getenv("ZAI_MODEL", "glm-4.5")
 
 app = FastAPI(
-    title="Customer Refund System Backend",
-    description="Hackathon backend using Z.AI GLM as a customer refund workflow reasoning engine",
-    version="1.0.0"
+    title="Multi-Agent Customer Refund System Backend",
+    description="Hackathon backend using Z.AI GLM plus specialist refund agents for task dispatching",
+    version="2.0.0"
 )
 
 app.add_middleware(
@@ -32,6 +32,60 @@ app.add_middleware(
 # In-memory prototype databases
 workflow_db: Dict[str, Dict[str, Any]] = {}
 refund_case_db: Dict[str, Dict[str, Any]] = {}
+mock_order_db: Dict[str, Dict[str, Any]] = {
+    "ORD12345": {
+        "order_id": "ORD12345",
+        "customer_name": "Jamie Lee",
+        "customer_contact": "customer@email.com",
+        "product_or_service": "Wireless Mouse",
+        "payment_status": "paid",
+        "delivery_status": "delivered",
+        "refund_eligible": True,
+        "refund_window_days": 30,
+        "amount": "89.90",
+        "currency": "MYR",
+        "risk_level": "low"
+    },
+    "ORD99881": {
+        "order_id": "ORD99881",
+        "customer_name": "Alex Tan",
+        "customer_contact": "alex@example.com",
+        "product_or_service": "Bluetooth Headphones",
+        "payment_status": "paid",
+        "delivery_status": "delivered_damaged",
+        "refund_eligible": True,
+        "refund_window_days": 14,
+        "amount": "129.90",
+        "currency": "MYR",
+        "risk_level": "medium"
+    },
+    "ORD00000": {
+        "order_id": "ORD00000",
+        "customer_name": "Test User",
+        "customer_contact": "blocked@example.com",
+        "product_or_service": "Final Sale Voucher",
+        "payment_status": "paid",
+        "delivery_status": "delivered",
+        "refund_eligible": False,
+        "refund_window_days": 0,
+        "amount": "49.90",
+        "currency": "MYR",
+        "risk_level": "low"
+    },
+    "ORD77777": {
+        "order_id": "ORD77777",
+        "customer_name": "Morgan Lim",
+        "customer_contact": "morgan@example.com",
+        "product_or_service": "Premium Laptop",
+        "payment_status": "paid",
+        "delivery_status": "delivered",
+        "refund_eligible": True,
+        "refund_window_days": 7,
+        "amount": "4999.00",
+        "currency": "MYR",
+        "risk_level": "high"
+    }
+}
 
 
 class WorkflowRequest(BaseModel):
@@ -51,6 +105,9 @@ class WorkflowResponse(BaseModel):
     current_stage: str
     missing_information: List[str]
     next_action: str
+    assigned_agents: List[str] = Field(default_factory=list)
+    agent_tasks: List[Dict[str, Any]] = Field(default_factory=list)
+    agent_task_summary: Dict[str, Any] = Field(default_factory=dict)
     mapped_action: Dict[str, Any]
     structured_output: Dict[str, Any]
     created_at: str
@@ -59,7 +116,7 @@ class WorkflowResponse(BaseModel):
 
 def build_system_prompt() -> str:
     return """
-You are the central reasoning engine for a CUSTOMER REFUND SYSTEM.
+You are the coordinator for a MULTI-AGENT CUSTOMER REFUND SYSTEM.
 
 Your job:
 1. Understand messy customer refund messages.
@@ -67,7 +124,7 @@ Your job:
 3. Decide the refund workflow stage.
 4. Detect missing information needed to process a refund.
 5. Choose ONE allowed next_action.
-6. Generate structured actionable output for the frontend/backend.
+6. Generate structured actionable output that can be assigned to specialist backend agents.
 
 You MUST return valid JSON only.
 
@@ -133,6 +190,14 @@ The JSON format must be:
       "policy_flags": ["flag1", "flag2"]
     },
     "tasks": ["task1", "task2"],
+    "agent_tasks": [
+      {
+        "agent": "intake_agent",
+        "task": "task description",
+        "priority": "low_or_normal_or_high",
+        "status": "pending"
+      }
+    ],
     "questions_to_user": ["question1", "question2"],
     "recommended_tools_or_apis": ["tool1", "tool2"],
     "final_message": "string"
@@ -301,6 +366,214 @@ def check_input_limit(text: str) -> None:
         )
 
 
+REQUIRED_REFUND_FIELDS = {
+    "order_id": "order ID or receipt number",
+    "refund_reason": "refund reason",
+    "product_or_service": "product or service name",
+    "customer_contact": "customer email or phone number"
+}
+
+RISKY_REFUND_KEYWORDS = [
+    "fraud",
+    "scam",
+    "duplicate payment",
+    "charged twice",
+    "chargeback",
+    "bank dispute",
+    "legal",
+    "police",
+    "high value",
+    "expensive"
+]
+
+
+def is_known_value(value: Any) -> bool:
+    if value is None:
+        return False
+
+    text = str(value).strip().lower()
+    return bool(text) and text not in {
+        "unknown",
+        "n/a",
+        "na",
+        "none",
+        "not provided",
+        "not_provided",
+        "missing",
+        "string_or_unknown"
+    }
+
+
+def get_refund_details(glm_result: Dict[str, Any]) -> Dict[str, Any]:
+    structured_output = glm_result.setdefault("structured_output", {})
+    refund_details = structured_output.setdefault("refund_details", {})
+
+    if not isinstance(refund_details, dict):
+        refund_details = {}
+        structured_output["refund_details"] = refund_details
+
+    return refund_details
+
+
+def find_missing_required_fields(glm_result: Dict[str, Any]) -> List[str]:
+    refund_details = get_refund_details(glm_result)
+    missing_fields = []
+
+    for field_name in REQUIRED_REFUND_FIELDS:
+        if not is_known_value(refund_details.get(field_name)):
+            missing_fields.append(field_name)
+
+    existing_missing = glm_result.get("missing_information", [])
+    if isinstance(existing_missing, list):
+        for item in existing_missing:
+            normalized = str(item).strip()
+            if normalized and normalized not in missing_fields:
+                missing_fields.append(normalized)
+
+    return missing_fields
+
+
+def request_missing_refund_info(glm_result: Dict[str, Any], missing_fields: List[str]) -> None:
+    structured_output = glm_result.setdefault("structured_output", {})
+    readable_missing = [
+        REQUIRED_REFUND_FIELDS.get(field, field.replace("_", " "))
+        for field in missing_fields
+    ]
+
+    glm_result["workflow_stage"] = "collecting_information"
+    glm_result["missing_information"] = missing_fields
+    glm_result["next_action"] = "ask_follow_up_questions"
+
+    structured_output["questions_to_user"] = [
+        f"Please provide your {item}."
+        for item in readable_missing
+    ]
+    structured_output["final_message"] = (
+        "I need a little more information before I can validate this refund request: "
+        + ", ".join(readable_missing)
+        + "."
+    )
+
+
+def contains_risky_refund_signal(glm_result: Dict[str, Any]) -> bool:
+    structured_output = glm_result.get("structured_output", {})
+    text = json.dumps(structured_output).lower()
+    return any(keyword in text for keyword in RISKY_REFUND_KEYWORDS)
+
+
+def verify_refund_against_order_db(refund_details: Dict[str, Any]) -> Dict[str, Any]:
+    order_id = str(refund_details.get("order_id", "")).strip().upper()
+    customer_contact = str(refund_details.get("customer_contact", "")).strip().lower()
+
+    if not is_known_value(order_id):
+        return {
+            "verification_status": "blocked_missing_order_id",
+            "is_verified": False,
+            "is_refund_eligible": False,
+            "reason": "Order ID is required before the backend can verify this refund.",
+            "order_record": None,
+            "policy_flags": ["missing_order_id"]
+        }
+
+    order_record = mock_order_db.get(order_id)
+    if not order_record:
+        return {
+            "verification_status": "order_not_found",
+            "is_verified": False,
+            "is_refund_eligible": False,
+            "reason": f"Order {order_id} was not found in the prototype order database.",
+            "order_record": None,
+            "policy_flags": ["order_not_found"]
+        }
+
+    expected_contact = str(order_record.get("customer_contact", "")).strip().lower()
+    if is_known_value(customer_contact) and customer_contact != expected_contact:
+        return {
+            "verification_status": "customer_contact_mismatch",
+            "is_verified": False,
+            "is_refund_eligible": False,
+            "reason": "The provided customer contact does not match the order record.",
+            "order_record": order_record,
+            "policy_flags": ["customer_contact_mismatch"]
+        }
+
+    if order_record.get("payment_status") != "paid":
+        return {
+            "verification_status": "payment_not_confirmed",
+            "is_verified": False,
+            "is_refund_eligible": False,
+            "reason": "Payment is not confirmed for this order.",
+            "order_record": order_record,
+            "policy_flags": ["payment_not_confirmed"]
+        }
+
+    if not order_record.get("refund_eligible", False):
+        return {
+            "verification_status": "not_refund_eligible",
+            "is_verified": True,
+            "is_refund_eligible": False,
+            "reason": "The order exists, but it is not eligible for refund under the prototype policy.",
+            "order_record": order_record,
+            "policy_flags": ["not_refund_eligible"]
+        }
+
+    if order_record.get("risk_level") == "high":
+        return {
+            "verification_status": "verified_requires_manual_review",
+            "is_verified": True,
+            "is_refund_eligible": False,
+            "reason": "The order is verified but high-value, so it requires manual review before approval.",
+            "order_record": order_record,
+            "policy_flags": ["high_value_manual_review"]
+        }
+
+    return {
+        "verification_status": "verified_refund_eligible",
+        "is_verified": True,
+        "is_refund_eligible": True,
+        "reason": "Order, payment, customer contact, and prototype refund policy were verified.",
+        "order_record": order_record,
+        "policy_flags": []
+    }
+
+
+def get_workflow_verification(workflow: Dict[str, Any]) -> Dict[str, Any]:
+    refund_details = workflow.get("structured_output", {}).get("refund_details", {})
+    if not isinstance(refund_details, dict):
+        refund_details = {}
+
+    return verify_refund_against_order_db(refund_details)
+
+
+def enforce_refund_validation_rules(glm_result: Dict[str, Any]) -> Dict[str, Any]:
+    """Backend safety net so GLM cannot accidentally approve incomplete requests."""
+    if glm_result.get("workflow_stage") == "failed":
+        return glm_result
+
+    protected_actions = {
+        "create_refund_case",
+        "validate_refund_request",
+        "calculate_refund_estimate",
+        "approve_refund_prototype",
+        "reject_refund_request"
+    }
+
+    missing_fields = find_missing_required_fields(glm_result)
+    if missing_fields and glm_result.get("next_action") in protected_actions:
+        request_missing_refund_info(glm_result, missing_fields)
+        return glm_result
+
+    if contains_risky_refund_signal(glm_result) and glm_result.get("next_action") == "approve_refund_prototype":
+        glm_result["workflow_stage"] = "manual_review"
+        glm_result["next_action"] = "manual_review_required"
+        glm_result["missing_information"] = []
+        glm_result.setdefault("structured_output", {}).setdefault("eligibility_assessment", {})[
+            "policy_flags"
+        ] = ["risk_signal_requires_human_review"]
+
+    return glm_result
+
+
 def determine_status(glm_result: Dict[str, Any]) -> str:
     if glm_result["workflow_stage"] == "failed":
         return "failed"
@@ -374,6 +647,10 @@ def action_generate_refund_checklist(workflow: Dict[str, Any]) -> Dict[str, Any]
 
 
 def action_create_refund_case(workflow: Dict[str, Any]) -> Dict[str, Any]:
+    missing_fields = workflow.get("missing_information", [])
+    if missing_fields:
+        return action_ask_follow_up_questions(workflow)
+
     refund_case_id = "REFUND-" + str(uuid4())[:8].upper()
     refund_details = workflow["structured_output"].get("refund_details", {})
     eligibility = workflow["structured_output"].get("eligibility_assessment", {})
@@ -405,15 +682,78 @@ def action_create_refund_case(workflow: Dict[str, Any]) -> Dict[str, Any]:
 def action_validate_refund_request(workflow: Dict[str, Any]) -> Dict[str, Any]:
     refund_details = workflow["structured_output"].get("refund_details", {})
     eligibility = workflow["structured_output"].get("eligibility_assessment", {})
+    missing_fields = workflow.get("missing_information", [])
+    policy_flags = eligibility.get("policy_flags", [])
+    verification_result = get_workflow_verification(workflow)
+
+    if missing_fields:
+        validation_status = "blocked_missing_required_information"
+        reason = (
+            "Cannot validate this refund request yet because required information is missing: "
+            + ", ".join(missing_fields)
+            + "."
+        )
+        is_likely_eligible = False
+    elif not verification_result["is_verified"]:
+        validation_status = verification_result["verification_status"]
+        reason = verification_result["reason"]
+        is_likely_eligible = False
+        policy_flags = list(set(policy_flags + verification_result["policy_flags"]))
+    elif not verification_result["is_refund_eligible"]:
+        validation_status = verification_result["verification_status"]
+        reason = verification_result["reason"]
+        is_likely_eligible = False
+        policy_flags = list(set(policy_flags + verification_result["policy_flags"]))
+    elif contains_risky_refund_signal({
+        "structured_output": workflow.get("structured_output", {})
+    }):
+        validation_status = "requires_manual_review"
+        reason = "Risk signals were detected, so this refund must be reviewed by a human before approval."
+        is_likely_eligible = False
+        if "risk_signal_requires_human_review" not in policy_flags:
+            policy_flags.append("risk_signal_requires_human_review")
+    else:
+        validation_status = verification_result["verification_status"]
+        reason = verification_result["reason"]
+        is_likely_eligible = True
+
+        order_record = verification_result.get("order_record") or {}
+        refund_details["refund_amount"] = refund_details.get("refund_amount") or order_record.get("amount", "unknown")
+        refund_details["currency"] = refund_details.get("currency") or order_record.get("currency", "unknown")
+
+    case_action = None
+
+    if validation_status == "verified_refund_eligible":
+        workflow["status"] = "ready"
+        workflow["current_stage"] = "ready_to_process_refund"
+        workflow["next_action"] = "approve_refund_prototype"
+        case_action = action_create_refund_case(workflow)
+    elif validation_status == "verified_requires_manual_review":
+        workflow["status"] = "manual_review"
+        workflow["current_stage"] = "manual_review"
+        workflow["next_action"] = "manual_review_required"
+    elif validation_status in {
+        "not_refund_eligible",
+        "order_not_found",
+        "customer_contact_mismatch",
+        "payment_not_confirmed"
+    }:
+        workflow["status"] = "active"
+        workflow["current_stage"] = "checking_refund_eligibility"
+        workflow["next_action"] = "reject_refund_request"
 
     validation_result = {
         "validated_at": datetime.utcnow().isoformat(),
         "order_id": refund_details.get("order_id", "unknown"),
-        "validation_status": "needs_policy_or_order_check",
-        "is_likely_eligible": eligibility.get("is_likely_eligible", False),
-        "reason": eligibility.get("reason", "Refund eligibility needs to be checked."),
-        "policy_flags": eligibility.get("policy_flags", []),
-        "prototype_note": "This backend does not connect to a real order database yet."
+        "validation_status": validation_status,
+        "is_likely_eligible": is_likely_eligible,
+        "reason": reason,
+        "missing_required_fields": missing_fields,
+        "policy_flags": policy_flags,
+        "verification_result": verification_result,
+        "created_case": case_action.get("refund_case") if case_action else None,
+        "next_recommended_action": workflow.get("next_action"),
+        "prototype_note": "Verified against the in-memory prototype order database."
     }
 
     workflow["validation_result"] = validation_result
@@ -453,6 +793,24 @@ def action_calculate_refund_estimate(workflow: Dict[str, Any]) -> Dict[str, Any]
 
 
 def action_approve_refund_prototype(workflow: Dict[str, Any]) -> Dict[str, Any]:
+    if workflow.get("missing_information"):
+        return action_ask_follow_up_questions(workflow)
+
+    verification_result = get_workflow_verification(workflow)
+    if not verification_result["is_verified"]:
+        workflow["validation_result"] = verification_result
+        return action_validate_refund_request(workflow)
+
+    if not verification_result["is_refund_eligible"]:
+        if "manual_review" in verification_result["verification_status"]:
+            return action_manual_review_required(workflow)
+        return action_reject_refund_request(workflow)
+
+    if contains_risky_refund_signal({
+        "structured_output": workflow.get("structured_output", {})
+    }):
+        return action_manual_review_required(workflow)
+
     refund_case_id = workflow.get("refund_case_id")
 
     if not refund_case_id:
@@ -575,14 +933,210 @@ ACTION_MAP = {
 }
 
 
+AGENT_REGISTRY = {
+    "intake_agent": {
+        "name": "Refund Intake Agent",
+        "role": "Extracts customer intent, refund details, and missing information."
+    },
+    "customer_information_agent": {
+        "name": "Customer Information Agent",
+        "role": "Collects follow-up answers and keeps the customer-facing questions focused."
+    },
+    "checklist_agent": {
+        "name": "Refund Checklist Agent",
+        "role": "Turns workflow tasks into an actionable refund preparation checklist."
+    },
+    "case_creation_agent": {
+        "name": "Refund Case Agent",
+        "role": "Creates and stores prototype refund cases."
+    },
+    "eligibility_agent": {
+        "name": "Eligibility Agent",
+        "role": "Prepares order, policy, and payment validation work."
+    },
+    "refund_estimation_agent": {
+        "name": "Refund Estimation Agent",
+        "role": "Prepares prototype refund amount estimates."
+    },
+    "approval_agent": {
+        "name": "Refund Approval Agent",
+        "role": "Approves safe prototype refunds after required information is present."
+    },
+    "rejection_agent": {
+        "name": "Refund Rejection Agent",
+        "role": "Rejects clearly ineligible prototype refund requests."
+    },
+    "risk_review_agent": {
+        "name": "Risk Review Agent",
+        "role": "Escalates risky, unclear, or high-value cases to human review."
+    },
+    "communication_agent": {
+        "name": "Customer Communication Agent",
+        "role": "Prepares the final customer-facing message."
+    }
+}
+
+
+ACTION_AGENT_MAP = {
+    "ask_follow_up_questions": "customer_information_agent",
+    "generate_refund_checklist": "checklist_agent",
+    "create_refund_case": "case_creation_agent",
+    "validate_refund_request": "eligibility_agent",
+    "calculate_refund_estimate": "refund_estimation_agent",
+    "approve_refund_prototype": "approval_agent",
+    "reject_refund_request": "rejection_agent",
+    "manual_review_required": "risk_review_agent"
+}
+
+
+def create_agent_task(
+    agent_id: str,
+    task: str,
+    priority: str = "normal",
+    status: str = "pending",
+    result: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    agent = AGENT_REGISTRY[agent_id]
+
+    return {
+        "task_id": "TASK-" + str(uuid4())[:8].upper(),
+        "agent_id": agent_id,
+        "agent_name": agent["name"],
+        "agent_role": agent["role"],
+        "task": task,
+        "priority": priority,
+        "status": status,
+        "created_at": datetime.utcnow().isoformat(),
+        "completed_at": datetime.utcnow().isoformat() if status == "completed" else None,
+        "result": result or {}
+    }
+
+
+def get_structured_agent_tasks(workflow: Dict[str, Any]) -> List[Dict[str, Any]]:
+    raw_tasks = workflow.get("structured_output", {}).get("agent_tasks", [])
+    normalized_tasks = []
+
+    if not isinstance(raw_tasks, list):
+        return normalized_tasks
+
+    for item in raw_tasks:
+        if not isinstance(item, dict):
+            continue
+
+        agent_id = item.get("agent", "intake_agent")
+        if agent_id not in AGENT_REGISTRY:
+            agent_id = "intake_agent"
+
+        normalized_tasks.append(create_agent_task(
+            agent_id=agent_id,
+            task=item.get("task", "Review refund workflow information."),
+            priority=item.get("priority", "normal"),
+            status=item.get("status", "pending")
+        ))
+
+    return normalized_tasks
+
+
+def build_agent_task_plan(workflow: Dict[str, Any]) -> List[Dict[str, Any]]:
+    structured_output = workflow.get("structured_output", {})
+    next_action = workflow.get("next_action", "manual_review_required")
+    missing_information = workflow.get("missing_information", [])
+    summary = structured_output.get("summary", "Review the customer refund request.")
+
+    task_plan = [
+        create_agent_task(
+            "intake_agent",
+            "Extract refund intent, customer details, and missing information.",
+            status="completed",
+            result={
+                "intent": workflow.get("intent"),
+                "missing_information": missing_information,
+                "summary": summary
+            }
+        )
+    ]
+
+    task_plan.extend(get_structured_agent_tasks(workflow))
+
+    if missing_information:
+        task_plan.append(create_agent_task(
+            "customer_information_agent",
+            "Ask the customer only for the remaining missing refund information.",
+            priority="high" if "order_id" in missing_information else "normal"
+        ))
+
+    specialist_agent_id = ACTION_AGENT_MAP.get(next_action, "risk_review_agent")
+    task_plan.append(create_agent_task(
+        specialist_agent_id,
+        f"Run mapped workflow action: {next_action}.",
+        priority="high" if specialist_agent_id in {"risk_review_agent", "approval_agent"} else "normal"
+    ))
+
+    policy_flags = structured_output.get("eligibility_assessment", {}).get("policy_flags", [])
+    if next_action == "manual_review_required" or policy_flags:
+        task_plan.append(create_agent_task(
+            "risk_review_agent",
+            "Review policy flags and decide whether human support must take over.",
+            priority="high"
+        ))
+
+    task_plan.append(create_agent_task(
+        "communication_agent",
+        "Prepare the customer-facing response for the current refund workflow state."
+    ))
+
+    return task_plan
+
+
+def complete_primary_agent_task(
+    workflow: Dict[str, Any],
+    action_name: str,
+    action_result: Dict[str, Any]
+) -> None:
+    primary_agent_id = ACTION_AGENT_MAP.get(action_name, "risk_review_agent")
+    action_task_prefix = f"Run mapped workflow action: {action_name}."
+
+    for task in workflow.get("agent_tasks", []):
+        if (
+            task["agent_id"] == primary_agent_id
+            and task["status"] == "pending"
+            and task["task"] == action_task_prefix
+        ):
+            task["status"] = "completed"
+            task["completed_at"] = datetime.utcnow().isoformat()
+            task["result"] = {
+                "action_name": action_result.get("action_name"),
+                "executed": action_result.get("executed", False),
+                "system_note": action_result.get("system_note", "")
+            }
+            break
+
+
+def update_agent_summary(workflow: Dict[str, Any]) -> None:
+    agent_tasks = workflow.get("agent_tasks", [])
+    workflow["assigned_agents"] = sorted({task["agent_id"] for task in agent_tasks})
+    workflow["agent_task_summary"] = {
+        "total": len(agent_tasks),
+        "completed": len([task for task in agent_tasks if task["status"] == "completed"]),
+        "pending": len([task for task in agent_tasks if task["status"] == "pending"]),
+        "agents": workflow["assigned_agents"]
+    }
+
+
 def run_mapped_action(workflow: Dict[str, Any]) -> Dict[str, Any]:
     action_name = workflow.get("next_action", "manual_review_required")
 
     if action_name not in ACTION_MAP:
         action_name = "manual_review_required"
 
+    workflow["agent_tasks"] = build_agent_task_plan(workflow)
+    update_agent_summary(workflow)
+
     action_function = ACTION_MAP[action_name]
     result = action_function(workflow)
+
+    complete_primary_agent_task(workflow, action_name, result)
+    update_agent_summary(workflow)
 
     workflow["mapped_action"] = result
     return result
@@ -606,6 +1160,9 @@ def create_workflow_object(
         "current_stage": glm_result["workflow_stage"],
         "missing_information": glm_result["missing_information"],
         "next_action": glm_result["next_action"],
+        "assigned_agents": [],
+        "agent_tasks": [],
+        "agent_task_summary": {},
         "mapped_action": {},
         "structured_output": glm_result["structured_output"],
         "history": [
@@ -631,9 +1188,21 @@ def create_workflow_object(
 @app.get("/")
 def root():
     return {
-        "message": "Customer Refund System Backend is running",
+        "message": "Multi-Agent Customer Refund System Backend is running",
         "model": ZAI_MODEL,
+        "architecture": "multi_agent_task_dispatch",
+        "available_agents": list(AGENT_REGISTRY.keys()),
         "status": "ok"
+    }
+
+
+@app.get("/agents")
+def list_agents():
+    return {
+        "total": len(AGENT_REGISTRY),
+        "architecture": "multi_agent_task_dispatch",
+        "agents": AGENT_REGISTRY,
+        "action_agent_map": ACTION_AGENT_MAP
     }
 
 
@@ -664,7 +1233,7 @@ Remember:
 - If all required information is collected and it appears eligible, approve only in prototype mode.
 """
 
-    glm_result = call_glm(prompt)
+    glm_result = enforce_refund_validation_rules(call_glm(prompt))
 
     workflow_data = create_workflow_object(
         workflow_id=workflow_id,
@@ -714,7 +1283,7 @@ Important:
 - Choose only one allowed next_action.
 """
 
-    glm_result = call_glm(prompt)
+    glm_result = enforce_refund_validation_rules(call_glm(prompt))
 
     workflow.update({
         "status": determine_status(glm_result),
@@ -759,6 +1328,36 @@ def execute_refund_workflow(workflow_id: str):
         raise HTTPException(status_code=404, detail="Refund workflow not found")
 
     workflow = workflow_db[workflow_id]
+
+    guardrail_result = enforce_refund_validation_rules({
+        "intent": workflow.get("intent", "request_refund"),
+        "confidence": workflow.get("confidence", 0.0),
+        "workflow_stage": workflow.get("current_stage", "intake"),
+        "missing_information": workflow.get("missing_information", []),
+        "next_action": workflow.get("next_action", "manual_review_required"),
+        "structured_output": workflow.get("structured_output", {})
+    })
+
+    if guardrail_result.get("missing_information"):
+        workflow.update({
+            "status": determine_status(guardrail_result),
+            "current_stage": guardrail_result["workflow_stage"],
+            "missing_information": guardrail_result["missing_information"],
+            "next_action": guardrail_result["next_action"],
+            "structured_output": guardrail_result["structured_output"],
+            "updated_at": datetime.utcnow().isoformat()
+        })
+        run_mapped_action(workflow)
+        workflow_db[workflow_id] = workflow
+
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Refund workflow cannot be executed because required refund information is missing.",
+                "missing_information": workflow["missing_information"],
+                "mapped_action": workflow["mapped_action"]
+            }
+        )
 
     if workflow["status"] not in ["ready", "active"]:
         raise HTTPException(
@@ -824,6 +1423,15 @@ def list_refund_cases():
     }
 
 
+@app.get("/mock-orders")
+def list_mock_orders():
+    return {
+        "total": len(mock_order_db),
+        "orders": list(mock_order_db.values()),
+        "system_note": "Prototype in-memory order database used for refund verification."
+    }
+
+
 @app.delete("/workflow/{workflow_id}")
 @app.delete("/refund/{workflow_id}")
 def delete_refund_workflow(workflow_id: str):
@@ -859,7 +1467,7 @@ Choose one allowed next_action:
 - manual_review_required
 """
 
-    result = call_glm(prompt)
+    result = enforce_refund_validation_rules(call_glm(prompt))
 
     fake_workflow = {
         "workflow_id": "test-only",
@@ -886,5 +1494,6 @@ def health_check():
         "api_key_loaded": bool(ZAI_API_KEY),
         "workflow_count": len(workflow_db),
         "refund_case_count": len(refund_case_db),
-        "available_actions": list(ACTION_MAP.keys())
+        "available_actions": list(ACTION_MAP.keys()),
+        "available_agents": AGENT_REGISTRY
     }

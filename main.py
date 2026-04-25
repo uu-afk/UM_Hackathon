@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from typing import List, Dict, Any, Optional
 from uuid import uuid4
@@ -50,6 +50,8 @@ class WorkflowResponse(BaseModel):
     current_stage: str
     missing_information: List[str]
     next_action: str
+    assigned_agents: List[str] = Field(default_factory=list)
+    agent_tasks: List[Dict[str, Any]] = Field(default_factory=list)
     mapped_action: Dict[str, Any]
     structured_output: Dict[str, Any]
     created_at: str
@@ -58,7 +60,7 @@ class WorkflowResponse(BaseModel):
 
 def build_system_prompt() -> str:
     return """
-You are the central reasoning engine for a CUSTOMER REFUND WORKFLOW AUTOMATION SYSTEM.
+You are the coordinator for a MULTI-AGENT CUSTOMER REFUND WORKFLOW AUTOMATION SYSTEM.
 
 Your job:
 1. Understand messy customer refund requests.
@@ -66,7 +68,7 @@ Your job:
 3. Decide whether the refund has enough information.
 4. Detect missing information.
 5. Choose ONE allowed next_action.
-6. Generate structured actionable output for the refund workflow.
+6. Generate structured actionable output that can be assigned to specialist backend agents.
 
 You MUST return valid JSON only.
 
@@ -90,6 +92,14 @@ The JSON format must be:
   "structured_output": {
     "summary": "string",
     "tasks": ["task1", "task2"],
+    "agent_tasks": [
+      {
+        "agent": "intake_agent",
+        "task": "task description",
+        "priority": "low_or_normal_or_high",
+        "status": "pending"
+      }
+    ],
     "questions_to_user": ["question1", "question2"],
     "recommended_tools_or_apis": ["tool1", "tool2"],
     "final_message": "string"
@@ -414,14 +424,192 @@ ACTION_MAP = {
 }
 
 
+AGENT_REGISTRY = {
+    "intake_agent": {
+        "name": "Refund Intake Agent",
+        "role": "Extracts customer intent, refund context, and missing information."
+    },
+    "customer_information_agent": {
+        "name": "Customer Information Agent",
+        "role": "Collects follow-up answers and keeps customer questions focused."
+    },
+    "checklist_agent": {
+        "name": "Refund Checklist Agent",
+        "role": "Turns workflow tasks into a customer preparation checklist."
+    },
+    "eligibility_agent": {
+        "name": "Eligibility Agent",
+        "role": "Prepares order, policy, payment, delivery, and evidence checks."
+    },
+    "case_creation_agent": {
+        "name": "Refund Case Agent",
+        "role": "Creates and stores prototype refund cases."
+    },
+    "risk_review_agent": {
+        "name": "Risk Review Agent",
+        "role": "Escalates risky, unclear, or high-value cases to human review."
+    },
+    "execution_agent": {
+        "name": "Prototype Refund Execution Agent",
+        "role": "Runs safe prototype execution without moving real money."
+    },
+    "communication_agent": {
+        "name": "Customer Communication Agent",
+        "role": "Prepares the customer-facing response for the current workflow state."
+    }
+}
+
+
+ACTION_AGENT_MAP = {
+    "ask_follow_up_questions": "customer_information_agent",
+    "check_refund_eligibility": "eligibility_agent",
+    "create_refund_case": "case_creation_agent",
+    "generate_refund_checklist": "checklist_agent",
+    "escalate_manual_review": "risk_review_agent",
+    "execute_refund": "execution_agent",
+    "manual_review_required": "risk_review_agent"
+}
+
+
+def create_agent_task(
+    agent_id: str,
+    task: str,
+    priority: str = "normal",
+    status: str = "pending",
+    result: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    agent = AGENT_REGISTRY[agent_id]
+
+    return {
+        "task_id": "TASK-" + str(uuid4())[:8].upper(),
+        "agent_id": agent_id,
+        "agent_name": agent["name"],
+        "agent_role": agent["role"],
+        "task": task,
+        "priority": priority,
+        "status": status,
+        "created_at": datetime.utcnow().isoformat(),
+        "completed_at": datetime.utcnow().isoformat() if status == "completed" else None,
+        "result": result or {}
+    }
+
+
+def get_structured_agent_tasks(workflow: Dict[str, Any]) -> List[Dict[str, Any]]:
+    raw_tasks = workflow.get("structured_output", {}).get("agent_tasks", [])
+    normalized_tasks = []
+
+    if not isinstance(raw_tasks, list):
+        return normalized_tasks
+
+    for item in raw_tasks:
+        if not isinstance(item, dict):
+            continue
+
+        agent_id = item.get("agent", "intake_agent")
+        if agent_id not in AGENT_REGISTRY:
+            agent_id = "intake_agent"
+
+        normalized_tasks.append(create_agent_task(
+            agent_id=agent_id,
+            task=item.get("task", "Review refund workflow information."),
+            priority=item.get("priority", "normal"),
+            status=item.get("status", "pending")
+        ))
+
+    return normalized_tasks
+
+
+def build_agent_task_plan(workflow: Dict[str, Any]) -> List[Dict[str, Any]]:
+    structured_output = workflow.get("structured_output", {})
+    next_action = workflow.get("next_action", "manual_review_required")
+    missing_information = workflow.get("missing_information", [])
+
+    task_plan = [
+        create_agent_task(
+            "intake_agent",
+            "Extract refund intent, workflow stage, and missing information.",
+            status="completed",
+            result={
+                "intent": workflow.get("intent"),
+                "missing_information": missing_information,
+                "summary": structured_output.get("summary", "")
+            }
+        )
+    ]
+
+    task_plan.extend(get_structured_agent_tasks(workflow))
+
+    if missing_information:
+        task_plan.append(create_agent_task(
+            "customer_information_agent",
+            "Ask the customer only for the remaining missing refund information.",
+            priority="high" if "order_id" in missing_information else "normal"
+        ))
+
+    specialist_agent_id = ACTION_AGENT_MAP.get(next_action, "risk_review_agent")
+    task_plan.append(create_agent_task(
+        specialist_agent_id,
+        f"Run mapped workflow action: {next_action}.",
+        priority="high" if specialist_agent_id in {"risk_review_agent", "execution_agent"} else "normal"
+    ))
+
+    task_plan.append(create_agent_task(
+        "communication_agent",
+        "Prepare the customer-facing response for this refund workflow state."
+    ))
+
+    return task_plan
+
+
+def complete_primary_agent_task(
+    workflow: Dict[str, Any],
+    action_name: str,
+    action_result: Dict[str, Any]
+) -> None:
+    primary_agent_id = ACTION_AGENT_MAP.get(action_name, "risk_review_agent")
+    action_task_prefix = f"Run mapped workflow action: {action_name}."
+
+    for task in workflow.get("agent_tasks", []):
+        if (
+            task["agent_id"] == primary_agent_id
+            and task["status"] == "pending"
+            and task["task"] == action_task_prefix
+        ):
+            task["status"] = "completed"
+            task["completed_at"] = datetime.utcnow().isoformat()
+            task["result"] = {
+                "action_name": action_result.get("action_name"),
+                "executed": action_result.get("executed", False),
+                "system_note": action_result.get("system_note", "")
+            }
+            break
+
+
+def update_agent_summary(workflow: Dict[str, Any]) -> None:
+    agent_tasks = workflow.get("agent_tasks", [])
+    workflow["assigned_agents"] = sorted({task["agent_id"] for task in agent_tasks})
+    workflow["agent_task_summary"] = {
+        "total": len(agent_tasks),
+        "completed": len([task for task in agent_tasks if task["status"] == "completed"]),
+        "pending": len([task for task in agent_tasks if task["status"] == "pending"]),
+        "agents": workflow["assigned_agents"]
+    }
+
+
 def run_mapped_action(workflow: Dict[str, Any]) -> Dict[str, Any]:
     action_name = workflow.get("next_action", "manual_review_required")
 
     if action_name not in ACTION_MAP:
         action_name = "manual_review_required"
 
+    workflow["agent_tasks"] = build_agent_task_plan(workflow)
+    update_agent_summary(workflow)
+
     action_function = ACTION_MAP[action_name]
     result = action_function(workflow)
+
+    complete_primary_agent_task(workflow, action_name, result)
+    update_agent_summary(workflow)
 
     workflow["mapped_action"] = result
     return result
@@ -445,6 +633,9 @@ def create_workflow_object(
         "current_stage": glm_result["workflow_stage"],
         "missing_information": glm_result["missing_information"],
         "next_action": glm_result["next_action"],
+        "assigned_agents": [],
+        "agent_tasks": [],
+        "agent_task_summary": {},
         "mapped_action": {},
         "structured_output": glm_result["structured_output"],
         "history": [
@@ -706,5 +897,6 @@ def health_check():
         "api_key_loaded": bool(ZAI_API_KEY),
         "workflow_count": len(workflow_db),
         "refund_case_count": len(refund_case_db),
-        "available_actions": list(ACTION_MAP.keys())
+        "available_actions": list(ACTION_MAP.keys()),
+        "available_agents": AGENT_REGISTRY
     }

@@ -160,6 +160,21 @@
       color: #cbd5e1;
     }
 
+    .view-switch {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .view-switch button {
+      padding: 10px 12px;
+    }
+
+    .view-switch button.active {
+      background: #ffffff;
+      color: #1e3a8a;
+    }
+
     .ghost-light {
       background: rgba(255, 255, 255, 0.15);
       color: white;
@@ -714,6 +729,55 @@
       margin-top: 10px;
     }
 
+    .hidden {
+      display: none !important;
+    }
+
+    .admin-view {
+      display: grid;
+      gap: 18px;
+    }
+
+    .admin-log {
+      max-height: 620px;
+      overflow: auto;
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: var(--radius-md);
+      padding: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+    }
+
+    .admin-log details {
+      color: #e2e8f0;
+    }
+
+    .admin-log summary {
+      cursor: pointer;
+      font-weight: 800;
+    }
+
+    .admin-log .info-card {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(148, 163, 184, 0.24);
+    }
+
+    .admin-log .info-card span,
+    .admin-log .small {
+      color: #94a3b8;
+    }
+
+    .admin-log .info-card strong,
+    .admin-log strong {
+      color: #f8fafc;
+    }
+
+    .admin-log pre {
+      color: #dbeafe;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
     @media (max-width: 1050px) {
       .hero,
       .main-grid {
@@ -789,6 +853,10 @@
           <input id="baseUrlInput" value="http://127.0.0.1:8000" />
           <button class="ghost-light" onclick="saveBackendUrl()">Save</button>
         </div>
+        <div class="view-switch">
+          <button id="customerViewBtn" class="ghost-light active" onclick="showCustomerView()">Customer View</button>
+          <button id="adminViewBtn" class="ghost-light" onclick="showAdminView()">Admin View</button>
+        </div>
         <div class="action-row">
           <button class="ghost-light" onclick="checkHealth()">Check Health</button>
           <button class="ghost-light" onclick="viewRefundCases()">View Cases</button>
@@ -799,7 +867,7 @@
       </div>
     </section>
 
-    <main class="main-grid">
+    <main id="customerView" class="main-grid">
       <aside class="panel sidebar">
         <div class="panel-header">
           <h2>Case Dashboard</h2>
@@ -850,7 +918,6 @@
           </div>
 
           <div class="action-row">
-            <button class="secondary" onclick="copyLatestJson()">Copy Developer JSON</button>
             <button class="danger" onclick="clearApp()">Reset App</button>
           </div>
         </div>
@@ -884,7 +951,7 @@
         <div class="panel">
           <div class="panel-header">
             <h2>Customer Conversation</h2>
-            <span class="small">Customer view with developer details hidden</span>
+            <span class="small">Customer-safe view</span>
           </div>
 
           <div id="chatArea" class="chat-window">
@@ -926,6 +993,29 @@
         </div>
       </section>
     </main>
+
+    <section id="adminView" class="admin-view hidden">
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Admin Workflow Log</h2>
+            <p class="small" style="margin: 4px 0 0;">
+              Internal backend, GLM, multi-agent, and raw JSON details. This is separate from the customer view.
+            </p>
+          </div>
+          <div class="action-row">
+            <button class="secondary" onclick="copyLatestJson()">Copy Admin JSON</button>
+            <button class="secondary" onclick="showCustomerView()">Back to Customer View</button>
+          </div>
+        </div>
+
+        <div class="panel-body">
+          <div id="adminLog" class="admin-log">
+            <p class="small" style="margin: 0;">Backend workflow details will appear here after a request.</p>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 
   <div id="toast" class="toast"></div>
@@ -943,6 +1033,27 @@
       { key: "decision", title: "Decision", desc: "Approve, reject, or review" },
       { key: "completed", title: "Completed", desc: "Prototype action executed" }
     ];
+
+    function setActiveView(viewName) {
+      const customerView = document.getElementById("customerView");
+      const adminView = document.getElementById("adminView");
+      const customerViewBtn = document.getElementById("customerViewBtn");
+      const adminViewBtn = document.getElementById("adminViewBtn");
+
+      const showAdmin = viewName === "admin";
+      customerView.classList.toggle("hidden", showAdmin);
+      adminView.classList.toggle("hidden", !showAdmin);
+      customerViewBtn.classList.toggle("active", !showAdmin);
+      adminViewBtn.classList.toggle("active", showAdmin);
+    }
+
+    function showCustomerView() {
+      setActiveView("customer");
+    }
+
+    function showAdminView() {
+      setActiveView("admin");
+    }
 
     document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("baseUrlInput").value = BASE_URL;
@@ -1201,13 +1312,13 @@
       return [];
     }
 
-    function renderDeveloperDetails(data) {
+    function renderAdminDetails(data, title = "Admin Log") {
       const output = data.structured_output || {};
       const mapped = data.mapped_action || {};
 
       let html = `
-        <details class="raw-json-toggle">
-          <summary>Developer Details</summary>
+        <details class="raw-json-toggle" open>
+          <summary>${escapeHtml(title)}</summary>
           <div style="padding: 14px; display: grid; gap: 12px;">
             <div class="info-grid">
               <div class="info-card">
@@ -1239,6 +1350,12 @@
         </details>
       `;
       return html;
+    }
+
+    function updateAdminLog(data, title = "Workflow Admin Log") {
+      const adminLog = document.getElementById("adminLog");
+      if (!adminLog) return;
+      adminLog.innerHTML = renderAdminDetails(data, title);
     }
 
     function renderList(title, items, icon = "•") {
@@ -1417,13 +1534,12 @@
     function renderWorkflow(data) {
       latestResponse = data;
       updateDashboard(data);
+      updateAdminLog(data);
 
       const output = data.structured_output || {};
       const mapped = data.mapped_action || {};
       const caseId = getRefundCaseId(data);
       const estimatedRefund = getEstimatedRefund(data);
-      const infoNeeded = getInfoNeededCount(data);
-      const nextSteps = getCustomerNextSteps(data);
 
       let html = `
         <div class="ai-summary">
@@ -1459,13 +1575,6 @@
 
       html += renderCustomerRefundInfo(data);
 
-      if (infoNeeded > 0) {
-        html += renderList("Information Needed", data.missing_information || []);
-      }
-
-      html += renderList("Questions for You", output.questions_to_user || []);
-      html += renderList("Next Steps", nextSteps);
-
       if (mapped.validation_result?.reason) {
         html += `
           <div>
@@ -1499,7 +1608,6 @@
         `;
       }
 
-      html += renderDeveloperDetails(data);
       html += `</div>`;
 
       addMessage("Refund Assistant", html, "assistant");
@@ -1625,6 +1733,7 @@
 
         renderStages("completed");
         setPill("sideStatus", data.status || "completed");
+        updateAdminLog(data, "Prototype Execution Admin Log");
 
         let html = `
           <div class="ai-summary">
@@ -1647,10 +1756,6 @@
               <p style="margin: 6px 0 0;">${escapeHtml(data.message || "Refund workflow completed in prototype mode.")}</p>
             </div>
             <p class="small"><strong>Reminder:</strong> This does not send real money. It only simulates the refund approval workflow.</p>
-            <details>
-              <summary>Developer Details</summary>
-              <pre>${escapeHtml(JSON.stringify(data.mapped_action || data, null, 2))}</pre>
-            </details>
           </div>
         `;
 
@@ -1676,11 +1781,14 @@
         }
 
         setPill("connectionStatus", "active", "Backend connected");
-        addMessage(
-          "Backend Health",
-          `<p>Backend is connected and ready.</p><details><summary>Developer Details</summary><pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre></details>`,
-          "system"
-        );
+        document.getElementById("adminLog").innerHTML = `
+          <details class="raw-json-toggle" open>
+            <summary>Backend Health Admin Log</summary>
+            <pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+          </details>
+        `;
+        showAdminView();
+        showToast("Backend connected. Health details opened in Admin View.");
       } catch (error) {
         setPill("connectionStatus", "error");
         addMessage("Connection Error", "Cannot connect to backend. Make sure FastAPI is running.", "error");
@@ -1691,7 +1799,7 @@
       const cases = Array.isArray(data) ? data : Array.isArray(data.refund_cases) ? data.refund_cases : Array.isArray(data.cases) ? data.cases : null;
 
       if (!cases || cases.length === 0) {
-        return `<p>No refund cases returned by the backend.</p><pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+        return `<p>No refund cases returned by the backend.</p>`;
       }
 
       let html = `
@@ -1723,10 +1831,6 @@
       html += `
           </tbody>
         </table>
-        <details class="raw-json-toggle">
-          <summary>View Raw Cases JSON</summary>
-          <pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
-        </details>
       `;
 
       return html;
@@ -1744,7 +1848,16 @@
           return;
         }
 
-        addMessage("Refund Cases", renderCasesTable(data), "system");
+        document.getElementById("adminLog").innerHTML = `
+          <details class="raw-json-toggle" open>
+            <summary>Refund Cases Admin Log</summary>
+            <pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+          </details>
+          <div style="margin-top: 14px;">
+            ${renderCasesTable(data)}
+          </div>
+        `;
+        showAdminView();
       } catch (error) {
         addMessage("Connection Error", "Cannot connect to backend.", "error");
       }
@@ -1788,7 +1901,9 @@
       document.getElementById("metricIntent").textContent = "—";
       document.getElementById("metricStage").textContent = "—";
       document.getElementById("metricAction").textContent = "—";
+      document.getElementById("adminLog").innerHTML = '<p class="small" style="margin: 0;">Backend workflow details will appear here after a request.</p>';
 
+      showCustomerView();
       renderStages("received");
       updateCharCount();
       showToast("App reset.");

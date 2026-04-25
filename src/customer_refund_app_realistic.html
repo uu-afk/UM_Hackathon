@@ -1,0 +1,2028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RefundFlow | Customer Refund Assistant</title>
+
+  <style>
+    :root {
+      --bg: #eef3ff;
+      --surface: #ffffff;
+      --surface-soft: #f8fafc;
+      --surface-blue: #eff6ff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --success: #16a34a;
+      --warning: #f59e0b;
+      --danger: #dc2626;
+      --purple: #7c3aed;
+      --shadow: 0 20px 45px rgba(15, 23, 42, 0.10);
+      --radius-lg: 24px;
+      --radius-md: 16px;
+      --radius-sm: 10px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(37, 99, 235, 0.18), transparent 32%),
+        radial-gradient(circle at top right, rgba(124, 58, 237, 0.16), transparent 30%),
+        linear-gradient(180deg, #f8fbff 0%, var(--bg) 100%);
+      min-height: 100vh;
+    }
+
+    button,
+    input,
+    textarea,
+    select {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 11px 18px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 22px rgba(37, 99, 235, 0.18);
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .app-shell {
+      width: min(1320px, calc(100% - 32px));
+      margin: 28px auto;
+    }
+
+    .hero {
+      background: rgba(255, 255, 255, 0.82);
+      backdrop-filter: blur(18px);
+      border: 1px solid rgba(226, 232, 240, 0.9);
+      box-shadow: var(--shadow);
+      border-radius: var(--radius-lg);
+      padding: 22px;
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      gap: 18px;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .logo {
+      width: 54px;
+      height: 54px;
+      border-radius: 18px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: linear-gradient(135deg, var(--primary), var(--purple));
+      box-shadow: 0 12px 30px rgba(37, 99, 235, 0.28);
+      font-size: 26px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(26px, 3vw, 42px);
+      letter-spacing: -0.04em;
+      line-height: 1.04;
+    }
+
+    .subtitle {
+      margin: 8px 0 0;
+      color: var(--muted);
+      line-height: 1.55;
+      max-width: 760px;
+    }
+
+    .connection-card {
+      background: linear-gradient(135deg, #0f172a, #1e3a8a);
+      color: white;
+      border-radius: 20px;
+      padding: 16px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .connection-card label {
+      color: #cbd5e1;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .url-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .url-row input {
+      width: 100%;
+      padding: 12px 13px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+      outline: none;
+      border-radius: 999px;
+    }
+
+    .url-row input::placeholder {
+      color: #cbd5e1;
+    }
+
+    .view-switch {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .view-switch button {
+      padding: 10px 12px;
+    }
+
+    .view-switch button.active {
+      background: #ffffff;
+      color: #1e3a8a;
+    }
+
+    .ghost-light {
+      background: rgba(255, 255, 255, 0.15);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 360px minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(18px);
+      border: 1px solid rgba(226, 232, 240, 0.95);
+      box-shadow: var(--shadow);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 18px 18px 14px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .panel-header h2,
+    .panel-header h3 {
+      margin: 0;
+      font-size: 17px;
+      letter-spacing: -0.01em;
+    }
+
+    .panel-body {
+      padding: 18px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 14px;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .metric {
+      background: var(--surface-soft);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 14px;
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 22px;
+      margin-top: 4px;
+      letter-spacing: -0.03em;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 11px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 800;
+      background: #e0e7ff;
+      color: #3730a3;
+      white-space: nowrap;
+    }
+
+    .status-pill.ready,
+    .status-pill.active,
+    .status-pill.approved,
+    .status-pill.completed {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .status-pill.waiting_for_customer,
+    .status-pill.waiting_for_user {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .status-pill.no_case {
+      background: #e2e8f0;
+      color: #475569;
+    }
+
+    .status-pill.failed,
+    .status-pill.rejected,
+    .status-pill.error {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .stage-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .stage {
+      display: grid;
+      grid-template-columns: 32px 1fr;
+      gap: 10px;
+      align-items: start;
+      color: var(--muted);
+    }
+
+    .stage-dot {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: #e2e8f0;
+      color: #475569;
+      font-weight: 900;
+      font-size: 13px;
+    }
+
+    .stage.active-stage {
+      color: var(--text);
+    }
+
+    .stage.active-stage .stage-dot {
+      background: linear-gradient(135deg, var(--primary), var(--purple));
+      color: white;
+      box-shadow: 0 8px 18px rgba(37, 99, 235, 0.25);
+    }
+
+    .stage strong {
+      display: block;
+      font-size: 14px;
+    }
+
+    .stage span {
+      display: block;
+      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    .quick-chip {
+      width: 100%;
+      text-align: left;
+      justify-content: flex-start;
+      border-radius: 14px;
+      background: white;
+      color: var(--text);
+      border: 1px solid var(--line);
+      padding: 12px;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+
+    .quick-chip:hover {
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+    }
+
+    .action-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .primary {
+      background: linear-gradient(135deg, var(--primary), var(--purple));
+      color: white;
+    }
+
+    .secondary {
+      background: #e2e8f0;
+      color: #334155;
+    }
+
+    .success {
+      background: linear-gradient(135deg, #16a34a, #059669);
+      color: white;
+    }
+
+    .danger {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .workspace {
+      display: grid;
+      gap: 18px;
+    }
+
+    .composer {
+      padding: 18px;
+      display: grid;
+      gap: 12px;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    }
+
+    .composer-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      min-height: 120px;
+      padding: 16px;
+      resize: vertical;
+      outline: none;
+      line-height: 1.5;
+      background: white;
+      color: var(--text);
+      transition: border 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    textarea:focus,
+    input:focus {
+      border-color: rgba(37, 99, 235, 0.7);
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+    }
+
+    .chat-window {
+      min-height: 410px;
+      max-height: 680px;
+      overflow-y: auto;
+      padding: 18px;
+      background:
+        linear-gradient(180deg, rgba(248, 250, 252, 0.84), rgba(239, 246, 255, 0.84)),
+        repeating-linear-gradient(45deg, rgba(148, 163, 184, 0.08) 0, rgba(148, 163, 184, 0.08) 1px, transparent 1px, transparent 14px);
+    }
+
+    .empty-state {
+      height: 360px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    .empty-state-card {
+      max-width: 430px;
+      padding: 20px;
+    }
+
+    .empty-state-icon {
+      width: 72px;
+      height: 72px;
+      margin: 0 auto 12px;
+      border-radius: 24px;
+      display: grid;
+      place-items: center;
+      font-size: 34px;
+      background: var(--surface-blue);
+      color: var(--primary);
+    }
+
+    .message {
+      display: flex;
+      margin-bottom: 16px;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .message.customer {
+      justify-content: flex-end;
+    }
+
+    .avatar {
+      flex: 0 0 auto;
+      width: 36px;
+      height: 36px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      color: white;
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--primary), var(--purple));
+      box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
+    }
+
+    .message.customer .avatar {
+      background: linear-gradient(135deg, #10b981, #16a34a);
+      order: 2;
+    }
+
+    .message.system .avatar {
+      background: linear-gradient(135deg, #f59e0b, #ea580c);
+    }
+
+    .message.error .avatar {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+    }
+
+    .bubble {
+      width: min(760px, 88%);
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 14px;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+    }
+
+    .message.customer .bubble {
+      background: linear-gradient(135deg, #dcfce7, #ecfdf5);
+      border-color: #bbf7d0;
+    }
+
+    .message.system .bubble {
+      background: #fffbeb;
+      border-color: #fde68a;
+    }
+
+    .message.error .bubble {
+      background: #fef2f2;
+      border-color: #fecaca;
+    }
+
+    .bubble-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .bubble-title {
+      font-weight: 900;
+      letter-spacing: -0.01em;
+    }
+
+    .bubble-time {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .bubble-content {
+      color: #243244;
+      line-height: 1.55;
+      word-break: break-word;
+    }
+
+    .ai-summary {
+      display: grid;
+      gap: 12px;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .info-card {
+      border: 1px solid var(--line);
+      background: var(--surface-soft);
+      border-radius: 14px;
+      padding: 11px;
+      min-width: 0;
+    }
+
+    .info-card span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 4px;
+    }
+
+    .info-card strong {
+      display: block;
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+
+    .notice-list {
+      display: grid;
+      gap: 8px;
+      margin: 8px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .notice-list li {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      background: var(--surface-soft);
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      border-radius: 13px;
+    }
+
+    .notice-list li::before {
+      content: "•";
+      color: var(--primary);
+      font-weight: 900;
+    }
+
+    details {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: white;
+      overflow: hidden;
+    }
+
+    summary {
+      padding: 12px 14px;
+      cursor: pointer;
+      font-weight: 900;
+      color: #334155;
+      background: var(--surface-soft);
+    }
+
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      overflow-x: auto;
+      padding: 14px;
+      background: #0f172a;
+      color: #e2e8f0;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .follow-up-bar {
+      display: none;
+      padding: 16px 18px;
+      border-top: 1px solid var(--line);
+      background: white;
+      gap: 10px;
+    }
+
+    .follow-up-bar.active {
+      display: grid;
+    }
+
+    .execute-bar {
+      display: none;
+      padding: 16px 18px;
+      border-top: 1px solid var(--line);
+      background: #f0fdf4;
+      gap: 10px;
+    }
+
+    .execute-bar.active {
+      display: grid;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .toast {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 20;
+      display: grid;
+      gap: 8px;
+      width: min(360px, calc(100% - 40px));
+    }
+
+    .toast-item {
+      background: #0f172a;
+      color: white;
+      border-radius: 16px;
+      padding: 13px 14px;
+      box-shadow: var(--shadow);
+      animation: pop 0.2s ease;
+      line-height: 1.45;
+    }
+
+    @keyframes pop {
+      from { transform: translateY(8px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    .loader {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,0.55);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .case-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 13px;
+      overflow: hidden;
+      border-radius: 14px;
+    }
+
+    .case-table th,
+    .case-table td {
+      padding: 10px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    .case-table th {
+      color: var(--muted);
+      background: var(--surface-soft);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-size: 11px;
+    }
+
+    .raw-json-toggle {
+      margin-top: 10px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .admin-view {
+      display: grid;
+      gap: 18px;
+    }
+
+    .admin-log {
+      max-height: 620px;
+      overflow: auto;
+      background: #f8fafc;
+      color: #334155;
+      border-radius: var(--radius-md);
+      padding: 12px;
+      border: 1px solid var(--line);
+    }
+
+    .admin-log details {
+      color: #334155;
+    }
+
+    .admin-log summary {
+      cursor: pointer;
+      font-weight: 800;
+      color: #1e3a8a;
+    }
+
+    .admin-log .info-card {
+      background: #ffffff;
+      border-color: var(--line);
+    }
+
+    .admin-log .info-card span,
+    .admin-log .small {
+      color: #64748b;
+    }
+
+    .admin-log .info-card strong,
+    .admin-log strong {
+      color: #0f172a;
+    }
+
+    .admin-log pre {
+      color: #475569;
+      background: #eef2ff;
+      border: 1px solid #dbeafe;
+      border-radius: 12px;
+      padding: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .audit-entry {
+      background: #ffffff;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      margin-bottom: 12px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .audit-entry:last-child {
+      margin-bottom: 0;
+    }
+
+    .audit-topline {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .audit-title {
+      margin: 0;
+      color: #0f172a;
+      font-size: 15px;
+    }
+
+    .audit-time {
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .audit-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .audit-pill {
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 9px;
+    }
+
+    .audit-pill span {
+      display: block;
+      color: #64748b;
+      font-size: 10px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 3px;
+    }
+
+    .audit-pill strong {
+      color: #0f172a;
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    .audit-message {
+      margin: 0;
+      color: #475569;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 1050px) {
+      .hero,
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .main-grid {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .sidebar {
+        width: 100%;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .app-shell {
+        width: min(100% - 20px, 1320px);
+        margin: 10px auto;
+      }
+
+      .hero,
+      .panel {
+        border-radius: 18px;
+      }
+
+      .metric-grid,
+      .info-grid,
+      .audit-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .url-row {
+        grid-template-columns: 1fr;
+      }
+
+      .bubble {
+        width: 100%;
+      }
+
+      .message.customer .avatar {
+        display: none;
+      }
+
+      .panel-header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app-shell">
+    <section class="hero">
+      <div>
+        <div class="brand">
+          <div class="logo">↩</div>
+          <div>
+            <h1>RefundFlow</h1>
+            <p class="subtitle">
+              A realistic customer refund assistant prototype. It collects customer details,
+              checks missing information, creates a refund case, validates the request, and
+              approves or routes the case for review in prototype mode.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="connection-card">
+        <label for="baseUrlInput">Backend Connection</label>
+        <div class="url-row">
+          <input id="baseUrlInput" value="http://127.0.0.1:8000" />
+          <button class="ghost-light" onclick="saveBackendUrl()">Save</button>
+        </div>
+        <div class="view-switch">
+          <button id="customerViewBtn" class="ghost-light active" onclick="showCustomerView()">Customer View</button>
+          <button id="adminViewBtn" class="ghost-light" onclick="showAdminView()">Admin View</button>
+        </div>
+        <div class="action-row">
+          <button class="ghost-light" onclick="checkHealth()">Check Health</button>
+          <button class="ghost-light" onclick="viewRefundCases()">View Cases</button>
+        </div>
+        <p class="small" style="color:#cbd5e1; margin: 0;">
+          Start your FastAPI backend first, then test the workflow here.
+        </p>
+      </div>
+    </section>
+
+    <main id="customerView" class="main-grid">
+      <aside class="panel sidebar">
+        <div class="panel-header">
+          <h2>Case Dashboard</h2>
+          <span id="sideStatus" class="status-pill">No case</span>
+        </div>
+
+        <div class="panel-body stack">
+          <div class="metric-grid">
+            <div class="metric">
+              <span>Refund Case</span>
+              <strong id="metricWorkflow">—</strong>
+            </div>
+            <div class="metric">
+              <span>Refund Status</span>
+              <strong id="metricIntent">—</strong>
+            </div>
+            <div class="metric">
+              <span>Estimated Refund</span>
+              <strong id="metricStage">—</strong>
+            </div>
+            <div class="metric">
+              <span>Info Needed</span>
+              <strong id="metricAction">—</strong>
+            </div>
+          </div>
+
+          <div>
+            <h3 style="margin: 0 0 10px;">Workflow Progress</h3>
+            <div id="stageList" class="stage-list"></div>
+          </div>
+
+          <div>
+            <h3 style="margin: 0 0 10px;">Quick Test Requests</h3>
+            <div class="stack">
+              <button class="quick-chip" onclick="useTemplate('I want a refund because I received the wrong item. My order ID is ORD12345 and my email is customer@email.com. I paid by card.')">
+                Wrong item received
+              </button>
+              <button class="quick-chip" onclick="useTemplate('My parcel arrived damaged and I need a refund. The order number is ORD99881. My name is Alex Tan and the amount was 129.90 MYR.')">
+                Damaged item refund
+              </button>
+              <button class="quick-chip" onclick="useTemplate('I want my money back but I cannot find my order ID.')">
+                Missing order ID
+              </button>
+              <button class="quick-chip" onclick="useTemplate('I bought a subscription last month but I was charged twice. My email is customer@email.com and the amount is 49.90 MYR.')">
+                Duplicate payment
+              </button>
+            </div>
+          </div>
+
+          <div class="action-row">
+            <button class="danger" onclick="clearApp()">Reset App</button>
+          </div>
+        </div>
+      </aside>
+
+      <section class="workspace">
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>New Refund Request</h2>
+              <p class="small" style="margin: 4px 0 0;">
+                Type like a real customer. The system will decide what information is missing.
+              </p>
+            </div>
+            <span id="connectionStatus" class="status-pill">Backend not checked</span>
+          </div>
+
+          <div class="composer">
+            <div class="composer-label">
+              <span>Customer Message</span>
+              <span id="charCount">0 characters</span>
+            </div>
+            <textarea id="userInput" placeholder="Example: I want a refund because I received the wrong item. My order ID is ORD12345 and my email is customer@email.com."></textarea>
+            <div class="action-row">
+              <button id="startBtn" class="primary" onclick="startRefundWorkflow()">Start Refund Workflow</button>
+              <button class="secondary" onclick="document.getElementById('userInput').value=''; updateCharCount();">Clear Input</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Customer Conversation</h2>
+            <span class="small">Customer-safe view</span>
+          </div>
+
+          <div id="chatArea" class="chat-window">
+            <div class="empty-state" id="emptyState">
+              <div class="empty-state-card">
+                <div class="empty-state-icon">💬</div>
+                <h3 style="margin: 0 0 6px; color: var(--text);">No refund case yet</h3>
+                <p style="margin: 0;">
+                  Use a quick test request or type your own customer message to start the refund workflow.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div id="followUpSection" class="follow-up-bar">
+            <div>
+              <strong>AI needs more information</strong>
+              <p class="small" style="margin: 4px 0 0;">
+                Reply as the customer with the missing details.
+              </p>
+            </div>
+            <textarea id="followUpInput" placeholder="Example: My order ID is ORD12345 and my email is customer@email.com."></textarea>
+            <div class="action-row">
+              <button id="followUpBtn" class="primary" onclick="sendFollowUp()">Send Reply</button>
+            </div>
+          </div>
+
+          <div id="executeSection" class="execute-bar">
+            <div>
+              <strong>Refund is ready for prototype execution</strong>
+              <p class="small" style="margin: 4px 0 0;">
+                This only simulates approval. It does not send real money.
+              </p>
+            </div>
+            <div class="action-row">
+              <button id="executeBtn" class="success" onclick="executeRefundWorkflow()">Approve Refund in Prototype Mode</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <section id="adminView" class="admin-view hidden">
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Admin Workflow Log</h2>
+            <p class="small" style="margin: 4px 0 0;">
+              Internal backend, GLM, multi-agent, and raw JSON details. This is separate from the customer view.
+            </p>
+          </div>
+          <div class="action-row">
+            <button class="secondary" onclick="copyLatestJson()">Copy Admin JSON</button>
+            <button class="secondary" onclick="showCustomerView()">Back to Customer View</button>
+          </div>
+        </div>
+
+        <div class="panel-body">
+          <div id="adminLog" class="admin-log">
+            <p data-empty-admin-log class="small" style="margin: 0;">Audit events will appear here after a request.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    let BASE_URL = localStorage.getItem("refund_backend_url") || "http://127.0.0.1:8000";
+    let workflowId = null;
+    let currentStatus = null;
+    let latestResponse = null;
+
+    const stages = [
+      { key: "received", title: "Request received", desc: "Customer message captured" },
+      { key: "information", title: "Information check", desc: "Missing details identified" },
+      { key: "validation", title: "Validation", desc: "Order and refund policy checked" },
+      { key: "decision", title: "Decision", desc: "Approve, reject, or review" },
+      { key: "completed", title: "Completed", desc: "Prototype action executed" }
+    ];
+
+    function setActiveView(viewName) {
+      const customerView = document.getElementById("customerView");
+      const adminView = document.getElementById("adminView");
+      const customerViewBtn = document.getElementById("customerViewBtn");
+      const adminViewBtn = document.getElementById("adminViewBtn");
+
+      const showAdmin = viewName === "admin";
+      customerView.classList.toggle("hidden", showAdmin);
+      adminView.classList.toggle("hidden", !showAdmin);
+      customerViewBtn.classList.toggle("active", !showAdmin);
+      adminViewBtn.classList.toggle("active", showAdmin);
+    }
+
+    function showCustomerView() {
+      setActiveView("customer");
+    }
+
+    function showAdminView() {
+      setActiveView("admin");
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("baseUrlInput").value = BASE_URL;
+      document.getElementById("userInput").addEventListener("input", updateCharCount);
+      renderStages("received");
+      updateCharCount();
+    });
+
+    function escapeHtml(value) {
+      if (value === null || value === undefined) return "";
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function getTime() {
+      return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById("toast");
+      const item = document.createElement("div");
+      item.className = "toast-item";
+      item.textContent = message;
+      toast.appendChild(item);
+      setTimeout(() => item.remove(), 3500);
+    }
+
+    function saveBackendUrl() {
+      const value = document.getElementById("baseUrlInput").value.trim().replace(/\/$/, "");
+      if (!value) {
+        showToast("Backend URL cannot be empty.");
+        return;
+      }
+      BASE_URL = value;
+      localStorage.setItem("refund_backend_url", BASE_URL);
+      showToast("Backend URL saved.");
+    }
+
+    function updateCharCount() {
+      const count = document.getElementById("userInput").value.length;
+      document.getElementById("charCount").textContent = `${count} character${count === 1 ? "" : "s"}`;
+    }
+
+    function useTemplate(text) {
+      document.getElementById("userInput").value = text;
+      updateCharCount();
+      document.getElementById("userInput").focus();
+    }
+
+    function setButtonLoading(buttonId, isLoading, loadingText, normalText) {
+      const button = document.getElementById(buttonId);
+      if (!button) return;
+      button.disabled = isLoading;
+      button.innerHTML = isLoading ? `<span class="loader"></span>${escapeHtml(loadingText)}` : escapeHtml(normalText);
+    }
+
+    function addMessage(title, content, type = "assistant") {
+      const emptyState = document.getElementById("emptyState");
+      if (emptyState) emptyState.remove();
+
+      const chatArea = document.getElementById("chatArea");
+      const msg = document.createElement("div");
+      msg.className = `message ${type}`;
+
+      const avatarText = type === "customer" ? "C" : type === "system" ? "S" : type === "error" ? "!" : "AI";
+      msg.innerHTML = `
+        <div class="avatar">${avatarText}</div>
+        <div class="bubble">
+          <div class="bubble-head">
+            <div class="bubble-title">${escapeHtml(title)}</div>
+            <div class="bubble-time">${getTime()}</div>
+          </div>
+          <div class="bubble-content">${content}</div>
+        </div>
+      `;
+
+      chatArea.appendChild(msg);
+      msg.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+
+    function safeStatusClass(status) {
+      return String(status || "unknown")
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "_");
+    }
+
+    function friendlyStatus(status) {
+      const clean = String(status || "unknown").toLowerCase();
+      const map = {
+        "waiting_for_customer": "Waiting for information",
+        "waiting_for_user": "Waiting for information",
+        "manual_review": "Needs human review",
+        "ready": "Ready for submission",
+        "active": "In progress",
+        "completed": "Completed",
+        "failed": "Failed",
+        "approved_prototype": "Approved in prototype",
+        "rejected": "Rejected",
+        "error": "Connection error"
+      };
+      return map[clean] || String(status || "Unknown").replaceAll("_", " ");
+    }
+
+    function setPill(elementId, status, label) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      el.className = `status-pill ${safeStatusClass(status)}`;
+      el.textContent = label || friendlyStatus(status);
+    }
+
+    function statusPill(status) {
+      const clean = status || "unknown";
+      return `<span class="status-pill ${safeStatusClass(clean)}">${escapeHtml(friendlyStatus(clean))}</span>`;
+    }
+
+    function isKnown(value) {
+      if (value === null || value === undefined) return false;
+      const text = String(value).trim().toLowerCase();
+      return text !== "" && text !== "unknown" && text !== "string_or_unknown" && text !== "not provided";
+    }
+
+    function displayValue(value, fallback = "Not provided yet") {
+      return isKnown(value) ? String(value) : fallback;
+    }
+
+    function getRefundCaseId(data) {
+      const mapped = data?.mapped_action || {};
+      return mapped.refund_case?.refund_case_id ||
+        mapped.validation_result?.created_case?.refund_case_id ||
+        mapped.approval_result?.refund_case_id ||
+        mapped.rejection_result?.refund_case_id ||
+        data?.refund_case_id ||
+        "Not created yet";
+    }
+
+    function getEstimatedRefund(data) {
+      const output = data?.structured_output || {};
+      const details = output.refund_details || {};
+      const mapped = data?.mapped_action || {};
+      const estimate = mapped.refund_estimate || {};
+      const verifiedOrder = mapped.validation_result?.verification_result?.order_record || {};
+      const amount = estimate.estimated_refund_amount || details.refund_amount || verifiedOrder.amount;
+      const currency = estimate.currency || details.currency || verifiedOrder.currency || "";
+
+      if (!isKnown(amount)) return "Not confirmed yet";
+      return `${amount} ${isKnown(currency) ? currency : ""}`.trim();
+    }
+
+    function getInfoNeededCount(data) {
+      return Array.isArray(data?.missing_information) ? data.missing_information.length : 0;
+    }
+
+    function normaliseStage(data) {
+      const status = String(data?.status || "").toLowerCase();
+      const currentStage = String(data?.current_stage || "").toLowerCase();
+      const nextAction = String(data?.next_action || "").toLowerCase();
+
+      if (status.includes("completed") || status.includes("approved")) return "completed";
+      if (status.includes("ready") || status.includes("active") || nextAction.includes("approve")) return "decision";
+      if (currentStage.includes("valid") || nextAction.includes("valid") || nextAction.includes("estimate")) return "validation";
+      if (status.includes("waiting") || currentStage.includes("missing") || nextAction.includes("ask")) return "information";
+      return "received";
+    }
+
+    function renderStages(activeKey) {
+      const stageList = document.getElementById("stageList");
+      const activeIndex = stages.findIndex(s => s.key === activeKey);
+      stageList.innerHTML = "";
+
+      stages.forEach((stage, index) => {
+        const div = document.createElement("div");
+        div.className = `stage ${index <= activeIndex ? "active-stage" : ""}`;
+        div.innerHTML = `
+          <div class="stage-dot">${index < activeIndex ? "✓" : index + 1}</div>
+          <div>
+            <strong>${escapeHtml(stage.title)}</strong>
+            <span>${escapeHtml(stage.desc)}</span>
+          </div>
+        `;
+        stageList.appendChild(div);
+      });
+    }
+
+    function updateDashboard(data) {
+      workflowId = data.workflow_id || workflowId;
+      currentStatus = data.status || currentStatus;
+
+      setPill("sideStatus", currentStatus || "no_case", currentStatus ? friendlyStatus(currentStatus) : "No case");
+
+      const caseId = getRefundCaseId(data);
+      const infoNeeded = getInfoNeededCount(data);
+
+      document.getElementById("metricWorkflow").textContent = caseId === "Not created yet" ? "Not yet" : caseId;
+      document.getElementById("metricIntent").textContent = friendlyStatus(data.status || "unknown");
+      document.getElementById("metricStage").textContent = getEstimatedRefund(data);
+      document.getElementById("metricAction").textContent = infoNeeded > 0 ? `${infoNeeded} item${infoNeeded === 1 ? "" : "s"}` : "None";
+
+      renderStages(normaliseStage(data));
+    }
+
+    function renderCustomerRefundInfo(data) {
+      const details = data?.structured_output?.refund_details || {};
+      const rows = [
+        ["Order ID", details.order_id],
+        ["Product / Service", details.product_or_service],
+        ["Refund Reason", details.refund_reason],
+        ["Payment Method", details.payment_method]
+      ].filter(([, value]) => isKnown(value));
+
+      if (rows.length === 0) return "";
+
+      let html = `<div><strong>Refund Details We Found</strong><div class="info-grid">`;
+      rows.forEach(([label, value]) => {
+        html += `
+          <div class="info-card">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(value)}</strong>
+          </div>
+        `;
+      });
+      html += `</div></div>`;
+      return html;
+    }
+
+    function getCustomerNextSteps(data) {
+      const output = data?.structured_output || {};
+      const mapped = data?.mapped_action || {};
+
+      if (Array.isArray(mapped.approval_result?.next_steps) && mapped.approval_result.next_steps.length > 0) {
+        return mapped.approval_result.next_steps;
+      }
+
+      if (Array.isArray(mapped.checklist) && mapped.checklist.length > 0) {
+        return mapped.checklist.map(item => item.task || String(item));
+      }
+
+      if (data?.status === "waiting_for_customer" || data?.status === "waiting_for_user") {
+        return ["Reply with the missing details requested above.", "Keep your order confirmation or receipt ready."];
+      }
+
+      if (mapped.manual_review) {
+        return ["Your request should be checked by a support staff member.", "Do not issue a real refund from this prototype screen."];
+      }
+
+      if (mapped.refund_case) {
+        return ["Save your refund case ID for reference.", "Wait for the refund team to review the case."];
+      }
+
+      if (Array.isArray(output.tasks) && output.tasks.length > 0) {
+        return output.tasks;
+      }
+
+      return [];
+    }
+
+    function getAuditCaseId(data) {
+      const mapped = data?.mapped_action || {};
+      return getRefundCaseId(data) ||
+        mapped.validation_result?.created_case?.refund_case_id ||
+        "—";
+    }
+
+    function getAuditMessage(data) {
+      const mapped = data?.mapped_action || {};
+      return data?.message ||
+        mapped.message ||
+        mapped.validation_result?.reason ||
+        mapped.approval_result?.message ||
+        data?.structured_output?.final_message ||
+        data?.structured_output?.summary ||
+        "No message provided.";
+    }
+
+    function renderAuditEntry(data, title = "Workflow Event") {
+      const mapped = data?.mapped_action || {};
+      const output = data?.structured_output || {};
+      const actionName = mapped.action_name || data?.next_action || "—";
+      const caseId = getAuditCaseId(data);
+      const workflowLabel = data?.workflow_id ? data.workflow_id.slice(0, 8) + "..." : "—";
+      const rawId = `raw-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const summaryHtml = data?.summary_html ||
+        (output.summary ? `<p class="small"><strong>Summary:</strong> ${escapeHtml(output.summary)}</p>` : "");
+
+      return `
+        <article class="audit-entry">
+          <div class="audit-topline">
+            <h3 class="audit-title">${escapeHtml(title)}</h3>
+            <span class="audit-time">${escapeHtml(getTime())}</span>
+          </div>
+
+          <div class="audit-grid">
+            <div class="audit-pill">
+              <span>Status</span>
+              <strong>${escapeHtml(friendlyStatus(data?.status || "unknown"))}</strong>
+            </div>
+            <div class="audit-pill">
+              <span>Workflow</span>
+              <strong>${escapeHtml(workflowLabel)}</strong>
+            </div>
+            <div class="audit-pill">
+              <span>Case</span>
+              <strong>${escapeHtml(caseId)}</strong>
+            </div>
+            <div class="audit-pill">
+              <span>Action</span>
+              <strong>${escapeHtml(actionName)}</strong>
+            </div>
+          </div>
+
+          <p class="audit-message">${escapeHtml(getAuditMessage(data))}</p>
+          ${summaryHtml}
+          ${mapped.validation_result?.validation_status ? `<p class="small"><strong>Verification:</strong> ${escapeHtml(mapped.validation_result.validation_status)}</p>` : ""}
+          ${Array.isArray(data?.assigned_agents) && data.assigned_agents.length ? `<p class="small"><strong>Agents:</strong> ${escapeHtml(data.assigned_agents.join(", "))}</p>` : ""}
+
+          <details class="raw-json-toggle" id="${rawId}">
+            <summary>Raw JSON</summary>
+            <pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+          </details>
+        </article>
+      `;
+    }
+
+    function addAdminAuditEntry(data, title = "Workflow Event") {
+      const adminLog = document.getElementById("adminLog");
+      if (!adminLog) return;
+      const placeholder = adminLog.querySelector("[data-empty-admin-log]");
+      if (placeholder) placeholder.remove();
+      adminLog.insertAdjacentHTML("afterbegin", renderAuditEntry(data, title));
+    }
+
+    function renderList(title, items, icon = "•") {
+      if (!Array.isArray(items) || items.length === 0) return "";
+      let html = `<div><strong>${escapeHtml(title)}</strong><ul class="notice-list">`;
+      items.forEach(item => {
+        const text = typeof item === "object" ? JSON.stringify(item) : item;
+        html += `<li>${escapeHtml(text)}</li>`;
+      });
+      html += `</ul></div>`;
+      return html;
+    }
+
+    function renderRefundDetails(refundDetails) {
+      if (!refundDetails) return "";
+
+      const fields = [
+        ["Order ID", refundDetails.order_id],
+        ["Customer Name", refundDetails.customer_name],
+        ["Customer Contact", refundDetails.customer_contact],
+        ["Product / Service", refundDetails.product_or_service],
+        ["Refund Reason", refundDetails.refund_reason],
+        ["Purchase Date", refundDetails.purchase_date],
+        ["Payment Method", refundDetails.payment_method],
+        ["Refund Amount", refundDetails.refund_amount],
+        ["Currency", refundDetails.currency]
+      ];
+
+      let html = `<div><strong>Extracted Refund Details</strong><div class="info-grid">`;
+      fields.forEach(([label, value]) => {
+        html += `
+          <div class="info-card">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(value || "Unknown")}</strong>
+          </div>
+        `;
+      });
+      html += `</div></div>`;
+      return html;
+    }
+
+    function renderEligibility(eligibility) {
+      if (!eligibility) return "";
+
+      let html = `
+        <div>
+          <strong>Eligibility Assessment</strong>
+          <div class="info-grid" style="grid-template-columns: 1fr 2fr;">
+            <div class="info-card">
+              <span>Likely Eligible</span>
+              <strong>${eligibility.is_likely_eligible ? "Yes" : "No / Unknown"}</strong>
+            </div>
+            <div class="info-card">
+              <span>Reason</span>
+              <strong>${escapeHtml(eligibility.reason || "Not provided")}</strong>
+            </div>
+          </div>
+        </div>
+      `;
+
+      html += renderList("Policy Flags", eligibility.policy_flags || []);
+      return html;
+    }
+
+    function renderMappedAction(mapped) {
+      if (!mapped || Object.keys(mapped).length === 0) return "";
+
+      let html = `<div><strong>System Action</strong><div class="info-grid">`;
+
+      html += `
+        <div class="info-card">
+          <span>Action Name</span>
+          <strong>${escapeHtml(mapped.action_name || "No action")}</strong>
+        </div>
+      `;
+
+      if (mapped.refund_case) {
+        html += `
+          <div class="info-card">
+            <span>Refund Case ID</span>
+            <strong>${escapeHtml(mapped.refund_case.refund_case_id)}</strong>
+          </div>
+          <div class="info-card">
+            <span>Case Status</span>
+            <strong>${escapeHtml(mapped.refund_case.status)}</strong>
+          </div>
+          <div class="info-card">
+            <span>Priority</span>
+            <strong>${escapeHtml(mapped.refund_case.priority)}</strong>
+          </div>
+        `;
+      }
+
+      if (mapped.validation_result) {
+        html += `
+          <div class="info-card">
+            <span>Validation</span>
+            <strong>${escapeHtml(mapped.validation_result.validation_status)}</strong>
+          </div>
+          <div class="info-card">
+            <span>Validation Reason</span>
+            <strong>${escapeHtml(mapped.validation_result.reason)}</strong>
+          </div>
+        `;
+      }
+
+      if (mapped.refund_estimate) {
+        html += `
+          <div class="info-card">
+            <span>Estimated Refund</span>
+            <strong>${escapeHtml(mapped.refund_estimate.estimated_refund_amount)} ${escapeHtml(mapped.refund_estimate.currency)}</strong>
+          </div>
+          <div class="info-card">
+            <span>Estimate Status</span>
+            <strong>${escapeHtml(mapped.refund_estimate.estimate_status)}</strong>
+          </div>
+        `;
+      }
+
+      if (mapped.approval_result) {
+        html += `
+          <div class="info-card">
+            <span>Approval Status</span>
+            <strong>${escapeHtml(mapped.approval_result.status)}</strong>
+          </div>
+          <div class="info-card">
+            <span>Message</span>
+            <strong>${escapeHtml(mapped.approval_result.message)}</strong>
+          </div>
+        `;
+      }
+
+      if (mapped.rejection_result) {
+        html += `
+          <div class="info-card">
+            <span>Rejection Status</span>
+            <strong>${escapeHtml(mapped.rejection_result.status)}</strong>
+          </div>
+          <div class="info-card">
+            <span>Reason</span>
+            <strong>${escapeHtml(mapped.rejection_result.reason)}</strong>
+          </div>
+        `;
+      }
+
+      if (mapped.manual_review) {
+        html += `
+          <div class="info-card">
+            <span>Manual Review ID</span>
+            <strong>${escapeHtml(mapped.manual_review.review_id)}</strong>
+          </div>
+          <div class="info-card">
+            <span>Review Reason</span>
+            <strong>${escapeHtml(mapped.manual_review.reason)}</strong>
+          </div>
+        `;
+      }
+
+      html += `</div></div>`;
+
+      if (mapped.checklist) {
+        html += renderList("Refund Checklist", mapped.checklist.map(item => item.task || JSON.stringify(item)));
+      }
+
+      if (mapped.approval_result?.next_steps) {
+        html += renderList("Next Steps", mapped.approval_result.next_steps);
+      }
+
+      if (mapped.system_note) {
+        html += `<p class="small"><strong>System Note:</strong> ${escapeHtml(mapped.system_note)}</p>`;
+      }
+
+      return html;
+    }
+
+    function renderWorkflow(data) {
+      latestResponse = data;
+      updateDashboard(data);
+      addAdminAuditEntry(data, "Workflow Updated");
+
+      const output = data.structured_output || {};
+      const mapped = data.mapped_action || {};
+      const caseId = getRefundCaseId(data);
+      const estimatedRefund = getEstimatedRefund(data);
+
+      let html = `
+        <div class="ai-summary">
+          <div class="info-grid">
+            <div class="info-card">
+              <span>Refund Status</span>
+              <strong>${escapeHtml(friendlyStatus(data.status || "unknown"))}</strong>
+            </div>
+            <div class="info-card">
+              <span>Refund Case ID</span>
+              <strong>${escapeHtml(caseId)}</strong>
+            </div>
+            <div class="info-card">
+              <span>Estimated Refund</span>
+              <strong>${escapeHtml(estimatedRefund)}</strong>
+            </div>
+          </div>
+
+          <div>
+            <strong>Message</strong>
+            <p style="margin: 6px 0 0;">${escapeHtml(output.final_message || mapped.message || "Your refund request has been received.")}</p>
+          </div>
+      `;
+
+      if (output.summary) {
+        html += `
+          <div>
+            <strong>Request Summary</strong>
+            <p style="margin: 6px 0 0;">${escapeHtml(output.summary)}</p>
+          </div>
+        `;
+      }
+
+      html += renderCustomerRefundInfo(data);
+
+      if (mapped.validation_result?.reason) {
+        html += `
+          <div>
+            <strong>Review Note</strong>
+            <p style="margin: 6px 0 0;">${escapeHtml(mapped.validation_result.reason)}</p>
+          </div>
+        `;
+      }
+
+      if (mapped.rejection_result?.message || mapped.rejection_result?.reason) {
+        html += `
+          <div>
+            <strong>Refund Decision</strong>
+            <p style="margin: 6px 0 0;">${escapeHtml(mapped.rejection_result.message || mapped.rejection_result.reason)}</p>
+          </div>
+        `;
+      }
+
+      if (mapped.manual_review?.review_id) {
+        html += `
+          <div class="info-grid">
+            <div class="info-card">
+              <span>Review ID</span>
+              <strong>${escapeHtml(mapped.manual_review.review_id)}</strong>
+            </div>
+            <div class="info-card">
+              <span>Review Status</span>
+              <strong>${escapeHtml(mapped.manual_review.status || "pending_human_review")}</strong>
+            </div>
+          </div>
+        `;
+      }
+
+      html += `</div>`;
+
+      addMessage("Refund Assistant", html, "assistant");
+
+      const followUpSection = document.getElementById("followUpSection");
+      const executeSection = document.getElementById("executeSection");
+
+      if (data.status === "waiting_for_customer" || data.status === "waiting_for_user") {
+        followUpSection.classList.add("active");
+        executeSection.classList.remove("active");
+      } else if (data.status === "ready") {
+        followUpSection.classList.remove("active");
+        executeSection.classList.add("active");
+      } else {
+        followUpSection.classList.remove("active");
+        executeSection.classList.remove("active");
+      }
+    }
+
+    async function startRefundWorkflow() {
+      saveBackendUrl();
+
+      const input = document.getElementById("userInput").value.trim();
+      if (!input) {
+        showToast("Please type a customer refund request first.");
+        return;
+      }
+
+      addMessage("Customer", escapeHtml(input), "customer");
+      setButtonLoading("startBtn", true, "Processing", "Start Refund Workflow");
+
+      try {
+        const response = await fetch(`${BASE_URL}/refund/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_input: input,
+            user_type: "customer"
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          addMessage("Backend Error", `<pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`, "error");
+          return;
+        }
+
+        renderWorkflow(data);
+      } catch (error) {
+        addMessage(
+          "Connection Error",
+          `Cannot connect to backend. Make sure FastAPI is running with:<pre>uvicorn src.customer_refund_backend:app --reload</pre>`,
+          "error"
+        );
+      } finally {
+        setButtonLoading("startBtn", false, "Processing", "Start Refund Workflow");
+      }
+    }
+
+    async function sendFollowUp() {
+      const answer = document.getElementById("followUpInput").value.trim();
+
+      if (!answer) {
+        showToast("Please type your reply first.");
+        return;
+      }
+
+      if (!workflowId) {
+        showToast("No refund workflow has been started.");
+        return;
+      }
+
+      addMessage("Customer Reply", escapeHtml(answer), "customer");
+      document.getElementById("followUpInput").value = "";
+      setButtonLoading("followUpBtn", true, "Sending", "Send Reply");
+
+      try {
+        const response = await fetch(`${BASE_URL}/refund/follow-up`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workflow_id: workflowId,
+            answer: answer
+          })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          addMessage("Backend Error", `<pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`, "error");
+          return;
+        }
+
+        renderWorkflow(data);
+      } catch (error) {
+        addMessage("Connection Error", "Cannot connect to backend.", "error");
+      } finally {
+        setButtonLoading("followUpBtn", false, "Sending", "Send Reply");
+      }
+    }
+
+    async function executeRefundWorkflow() {
+      if (!workflowId) {
+        showToast("No refund workflow to execute.");
+        return;
+      }
+
+      setButtonLoading("executeBtn", true, "Approving", "Approve Refund in Prototype Mode");
+
+      try {
+        const response = await fetch(`${BASE_URL}/refund/execute/${workflowId}`, {
+          method: "POST"
+        });
+
+        const data = await response.json();
+        latestResponse = data;
+
+        if (!response.ok) {
+          addMessage("Execution Blocked", `<pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`, "error");
+          return;
+        }
+
+        renderStages("completed");
+        setPill("sideStatus", data.status || "completed");
+        addAdminAuditEntry(data, "Prototype Approval Executed");
+
+        let html = `
+          <div class="ai-summary">
+            <div class="info-grid">
+              <div class="info-card">
+                <span>Refund Status</span>
+                <strong>${escapeHtml(friendlyStatus(data.status || "completed"))}</strong>
+              </div>
+              <div class="info-card">
+                <span>Workflow</span>
+                <strong>${workflowId ? escapeHtml(workflowId.slice(0, 8) + "…") : "—"}</strong>
+              </div>
+              <div class="info-card">
+                <span>Mode</span>
+                <strong>Prototype only</strong>
+              </div>
+            </div>
+            <div>
+              <strong>Message</strong>
+              <p style="margin: 6px 0 0;">${escapeHtml(data.message || "Refund workflow completed in prototype mode.")}</p>
+            </div>
+            <p class="small"><strong>Reminder:</strong> This does not send real money. It only simulates the refund approval workflow.</p>
+          </div>
+        `;
+
+        addMessage("Refund Workflow Completed", html, "system");
+        document.getElementById("executeSection").classList.remove("active");
+      } catch (error) {
+        addMessage("Connection Error", "Cannot connect to backend.", "error");
+      } finally {
+        setButtonLoading("executeBtn", false, "Approving", "Approve Refund in Prototype Mode");
+      }
+    }
+
+    async function checkHealth() {
+      saveBackendUrl();
+      try {
+        const response = await fetch(`${BASE_URL}/health`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          setPill("connectionStatus", "error");
+          addMessage("Backend Health Error", `<pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`, "error");
+          return;
+        }
+
+        setPill("connectionStatus", "active", "Backend connected");
+        addAdminAuditEntry({
+          status: data.status || "healthy",
+          next_action: "health_check",
+          message: `Backend connected. Model: ${data.glm_model || "unknown"}. Workflows: ${data.workflow_count ?? 0}. Refund cases: ${data.refund_case_count ?? 0}.`,
+          structured_output: {
+            summary: "Backend health check completed successfully."
+          },
+          mapped_action: {
+            action_name: "health_check"
+          },
+          raw_health: data
+        }, "Backend Health Check");
+        showAdminView();
+        showToast("Backend connected. Health details opened in Admin View.");
+      } catch (error) {
+        setPill("connectionStatus", "error");
+        addMessage("Connection Error", "Cannot connect to backend. Make sure FastAPI is running.", "error");
+      }
+    }
+
+    function renderCasesTable(data) {
+      const cases = Array.isArray(data) ? data : Array.isArray(data.refund_cases) ? data.refund_cases : Array.isArray(data.cases) ? data.cases : null;
+
+      if (!cases || cases.length === 0) {
+        return `<p>No refund cases returned by the backend.</p>`;
+      }
+
+      let html = `
+        <table class="case-table">
+          <thead>
+            <tr>
+              <th>Case ID</th>
+              <th>Status</th>
+              <th>Priority</th>
+              <th>Order</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      cases.forEach(item => {
+        html += `
+          <tr>
+            <td>${escapeHtml(item.refund_case_id || item.case_id || item.id || "—")}</td>
+            <td>${escapeHtml(item.status || "—")}</td>
+            <td>${escapeHtml(item.priority || "—")}</td>
+            <td>${escapeHtml(item.order_id || item.order || "—")}</td>
+            <td>${escapeHtml(item.reason || item.refund_reason || "—")}</td>
+          </tr>
+        `;
+      });
+
+      html += `
+          </tbody>
+        </table>
+      `;
+
+      return html;
+    }
+
+    async function viewRefundCases() {
+      saveBackendUrl();
+
+      try {
+        const response = await fetch(`${BASE_URL}/refund-cases`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          addMessage("Refund Cases Error", `<pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`, "error");
+          return;
+        }
+
+        addAdminAuditEntry({
+          status: "active",
+          next_action: "list_refund_cases",
+          message: `Loaded ${data.total ?? 0} refund case${data.total === 1 ? "" : "s"} from the backend.`,
+          structured_output: {
+            summary: "Refund cases retrieved from backend."
+          },
+          summary_html: renderCasesTable(data),
+          mapped_action: {
+            action_name: "list_refund_cases"
+          },
+          raw_cases: data
+        }, "Refund Cases Loaded");
+        showAdminView();
+      } catch (error) {
+        addMessage("Connection Error", "Cannot connect to backend.", "error");
+      }
+    }
+
+    async function copyLatestJson() {
+      if (!latestResponse) {
+        showToast("No backend response to copy yet.");
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(JSON.stringify(latestResponse, null, 2));
+        showToast("Latest JSON copied to clipboard.");
+      } catch (error) {
+        showToast("Clipboard copy failed. Open raw response and copy manually.");
+      }
+    }
+
+    function clearApp() {
+      document.getElementById("chatArea").innerHTML = `
+        <div class="empty-state" id="emptyState">
+          <div class="empty-state-card">
+            <div class="empty-state-icon">💬</div>
+            <h3 style="margin: 0 0 6px; color: var(--text);">No refund case yet</h3>
+            <p style="margin: 0;">Use a quick test request or type your own customer message to start the refund workflow.</p>
+          </div>
+        </div>
+      `;
+      document.getElementById("followUpSection").classList.remove("active");
+      document.getElementById("executeSection").classList.remove("active");
+      document.getElementById("userInput").value = "";
+      document.getElementById("followUpInput").value = "";
+
+      workflowId = null;
+      currentStatus = null;
+      latestResponse = null;
+
+      setPill("sideStatus", "no_case", "No case");
+      document.getElementById("metricWorkflow").textContent = "—";
+      document.getElementById("metricIntent").textContent = "—";
+      document.getElementById("metricStage").textContent = "—";
+      document.getElementById("metricAction").textContent = "—";
+      document.getElementById("adminLog").innerHTML = '<p data-empty-admin-log class="small" style="margin: 0;">Audit events will appear here after a request.</p>';
+
+      showCustomerView();
+      renderStages("received");
+      updateCharCount();
+      showToast("App reset.");
+    }
+  </script>
+</body>
+</html>

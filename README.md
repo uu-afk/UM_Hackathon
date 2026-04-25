@@ -2,7 +2,7 @@
 
 ## Pitching Video
 
-10-minute pitching and product demonstration video: PASTE_VIDEO_LINK_HERE
+10-minute pitching and product demonstration video: [Watch the demo video](https://drive.google.com/file/d/11IbjAkBaLZCdk-M-1nOVwyUMpRswM5sR/view?usp=sharing)
 
 ## Project Overview
 
@@ -58,3 +58,4 @@ http://127.0.0.1:8000
 - The backend uses an in-memory mock order database for verification.
 - Prototype approval does not send real money or call a real payment gateway.
 - Restarting the backend clears in-memory workflows and refund cases.
+

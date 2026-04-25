@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -600,7 +600,7 @@
     }
 
     .notice-list li::before {
-      content: "•";
+      content: "â€¢";
       color: var(--primary);
       font-weight: 900;
     }
@@ -910,7 +910,7 @@
     <section class="hero">
       <div>
         <div class="brand">
-          <div class="logo">↩</div>
+          <div class="logo">â†©</div>
           <div>
             <h1>RefundFlow</h1>
             <p class="subtitle">
@@ -953,19 +953,19 @@
           <div class="metric-grid">
             <div class="metric">
               <span>Refund Case</span>
-              <strong id="metricWorkflow">—</strong>
+              <strong id="metricWorkflow">â€”</strong>
             </div>
             <div class="metric">
               <span>Refund Status</span>
-              <strong id="metricIntent">—</strong>
+              <strong id="metricIntent">â€”</strong>
             </div>
             <div class="metric">
               <span>Estimated Refund</span>
-              <strong id="metricStage">—</strong>
+              <strong id="metricStage">â€”</strong>
             </div>
             <div class="metric">
               <span>Info Needed</span>
-              <strong id="metricAction">—</strong>
+              <strong id="metricAction">â€”</strong>
             </div>
           </div>
 
@@ -1032,7 +1032,7 @@
           <div id="chatArea" class="chat-window">
             <div class="empty-state" id="emptyState">
               <div class="empty-state-card">
-                <div class="empty-state-icon">💬</div>
+                <div class="empty-state-icon">ðŸ’¬</div>
                 <h3 style="margin: 0 0 6px; color: var(--text);">No refund case yet</h3>
                 <p style="margin: 0;">
                   Use a quick test request or type your own customer message to start the refund workflow.
@@ -1306,7 +1306,7 @@
         const div = document.createElement("div");
         div.className = `stage ${index <= activeIndex ? "active-stage" : ""}`;
         div.innerHTML = `
-          <div class="stage-dot">${index < activeIndex ? "✓" : index + 1}</div>
+          <div class="stage-dot">${index < activeIndex ? "âœ“" : index + 1}</div>
           <div>
             <strong>${escapeHtml(stage.title)}</strong>
             <span>${escapeHtml(stage.desc)}</span>
@@ -1392,7 +1392,7 @@
       const mapped = data?.mapped_action || {};
       return getRefundCaseId(data) ||
         mapped.validation_result?.created_case?.refund_case_id ||
-        "—";
+        "â€”";
     }
 
     function getAuditMessage(data) {
@@ -1409,9 +1409,9 @@
     function renderAuditEntry(data, title = "Workflow Event") {
       const mapped = data?.mapped_action || {};
       const output = data?.structured_output || {};
-      const actionName = mapped.action_name || data?.next_action || "—";
+      const actionName = mapped.action_name || data?.next_action || "â€”";
       const caseId = getAuditCaseId(data);
-      const workflowLabel = data?.workflow_id ? data.workflow_id.slice(0, 8) + "..." : "—";
+      const workflowLabel = data?.workflow_id ? data.workflow_id.slice(0, 8) + "..." : "â€”";
       const rawId = `raw-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       const summaryHtml = data?.summary_html ||
         (output.summary ? `<p class="small"><strong>Summary:</strong> ${escapeHtml(output.summary)}</p>` : "");
@@ -1463,7 +1463,7 @@
       adminLog.insertAdjacentHTML("afterbegin", renderAuditEntry(data, title));
     }
 
-    function renderList(title, items, icon = "•") {
+    function renderList(title, items, icon = "â€¢") {
       if (!Array.isArray(items) || items.length === 0) return "";
       let html = `<div><strong>${escapeHtml(title)}</strong><ul class="notice-list">`;
       items.forEach(item => {
@@ -1765,7 +1765,7 @@
       } catch (error) {
         addMessage(
           "Connection Error",
-          `Cannot connect to backend. Make sure FastAPI is running with:<pre>uvicorn src.customer_refund_backend:app --reload</pre>`,
+          `Cannot connect to backend. Make sure FastAPI is running with:<pre>uvicorn customer_refund_backend:app --reload</pre>`,
           "error"
         );
       } finally {
@@ -1849,7 +1849,7 @@
               </div>
               <div class="info-card">
                 <span>Workflow</span>
-                <strong>${workflowId ? escapeHtml(workflowId.slice(0, 8) + "…") : "—"}</strong>
+                <strong>${workflowId ? escapeHtml(workflowId.slice(0, 8) + "â€¦") : "â€”"}</strong>
               </div>
               <div class="info-card">
                 <span>Mode</span>
@@ -1930,11 +1930,11 @@
       cases.forEach(item => {
         html += `
           <tr>
-            <td>${escapeHtml(item.refund_case_id || item.case_id || item.id || "—")}</td>
-            <td>${escapeHtml(item.status || "—")}</td>
-            <td>${escapeHtml(item.priority || "—")}</td>
-            <td>${escapeHtml(item.order_id || item.order || "—")}</td>
-            <td>${escapeHtml(item.reason || item.refund_reason || "—")}</td>
+            <td>${escapeHtml(item.refund_case_id || item.case_id || item.id || "â€”")}</td>
+            <td>${escapeHtml(item.status || "â€”")}</td>
+            <td>${escapeHtml(item.priority || "â€”")}</td>
+            <td>${escapeHtml(item.order_id || item.order || "â€”")}</td>
+            <td>${escapeHtml(item.reason || item.refund_reason || "â€”")}</td>
           </tr>
         `;
       });
@@ -1996,7 +1996,7 @@
       document.getElementById("chatArea").innerHTML = `
         <div class="empty-state" id="emptyState">
           <div class="empty-state-card">
-            <div class="empty-state-icon">💬</div>
+            <div class="empty-state-icon">ðŸ’¬</div>
             <h3 style="margin: 0 0 6px; color: var(--text);">No refund case yet</h3>
             <p style="margin: 0;">Use a quick test request or type your own customer message to start the refund workflow.</p>
           </div>
@@ -2012,10 +2012,10 @@
       latestResponse = null;
 
       setPill("sideStatus", "no_case", "No case");
-      document.getElementById("metricWorkflow").textContent = "—";
-      document.getElementById("metricIntent").textContent = "—";
-      document.getElementById("metricStage").textContent = "—";
-      document.getElementById("metricAction").textContent = "—";
+      document.getElementById("metricWorkflow").textContent = "â€”";
+      document.getElementById("metricIntent").textContent = "â€”";
+      document.getElementById("metricStage").textContent = "â€”";
+      document.getElementById("metricAction").textContent = "â€”";
       document.getElementById("adminLog").innerHTML = '<p data-empty-admin-log class="small" style="margin: 0;">Audit events will appear here after a request.</p>';
 
       showCustomerView();
@@ -2026,3 +2026,4 @@
   </script>
 </body>
 </html>
+
